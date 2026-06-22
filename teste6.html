@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Teste 5 - Transform Manual</title>
+<script>
+  window.__log = [];
+  function logErro(txt) {
+    window.__log.push(txt);
+    var el = document.getElementById('debug');
+    if (el) el.innerText = window.__log.join('\n\n');
+  }
+  window.addEventListener('error', function (e) {
+    logErro('✗ ERRO JS: ' + (e.message || 'desconhecido') + '\nem: ' + (e.filename || '?') + ':' + (e.lineno || '?'));
+  }, true);
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body style="background:#09090b; margin:0; color:white; font-family: sans-serif;">
+<p style="text-align:center; margin-top: 20px;">Teste 5 — transform manual (sem auto-scan)</p>
+<div id="debug" style="white-space:pre-wrap; color:#6bff8f; font-family: monospace; font-size: 12px; padding: 20px; border-top: 1px solid #333; margin-top: 10px;"></div>
+<div id="root"></div>
+
+<script type="text/jsx-source" id="app-source">
+  const { useState } = React;
+  function Teste() {
+    const [n, setN] = useState(0);
+    return (
+      <div style={{ minHeight: '50vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <button
+          onClick={() => setN(n + 1)}
+          className="bg-emerald-500 text-zinc-950 font-bold px-6 py-4 rounded-lg text-xl"
+        >
+          Funcionou! Cliques: {n}
+        </button>
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById('root')).render(<Teste />);
+</script>
+
+<script>
+  setTimeout(function () {
+    try {
+      var src = document.getElementById('app-source').textContent;
+      var out = Babel.transform(src, { presets: [['react', { runtime: 'classic' }]] }).code;
+      logErro('✓ Transform manual OK');
+      eval(out);
+      logErro('✓ Execução OK');
+    } catch (err) {
+      logErro('✗ ERRO no transform/execução manual: ' + err.message + '\n' + (err.stack || ''));
+    }
+  }, 2000);
+</script>
+</body>
+</html>
