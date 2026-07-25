@@ -69,29 +69,31 @@ function autoCorrelate(buf, sampleRate, silenceThreshold) {
   rms = Math.sqrt(rms / SIZE);
   if (rms < (silenceThreshold !== undefined ? silenceThreshold : 0.012)) return -1;
 
-  let r1 = 0, r2 = SIZE - 1;
-  const thres = 0.2;
-  for (let i = 0; i < SIZE / 2; i++) { if (Math.abs(buf[i]) < thres) { r1 = i; break; } }
-  for (let i = 1; i < SIZE / 2; i++) { if (Math.abs(buf[SIZE - i]) < thres) { r2 = SIZE - i; break; } }
-  const trimmed = buf.slice(r1, r2);
-  const n = trimmed.length;
-  if (n < 8) return -1;
+  // Range de lags para freq entre 55 Hz e 1500 Hz
+  const minLag = Math.floor(sampleRate / 1500);
+  const maxLag = Math.min(SIZE - 1, Math.ceil(sampleRate / 55));
 
-  const c = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    let sum = 0;
-    for (let j = 0; j < n - i; j++) sum += trimmed[j] * trimmed[j + i];
-    c[i] = sum;
+  // Autocorrelação normalizada no range de interesse
+  const c = new Float32Array(maxLag + 1);
+  for (let lag = minLag; lag <= maxLag; lag++) {
+    let sum = 0, n = SIZE - lag;
+    for (let j = 0; j < n; j++) sum += buf[j] * buf[j + lag];
+    c[lag] = sum / n; // normaliza pelo número de amostras usadas
   }
-  let d = 0;
-  while (d < n - 1 && c[d] > c[d + 1]) d++;
+
+  // Pular descida inicial, procurar o melhor pico no range
+  let d = minLag;
+  while (d < maxLag && c[d] > c[d + 1]) d++;
   let maxVal = -1, maxPos = -1;
-  for (let i = d; i < n; i++) { if (c[i] > maxVal) { maxVal = c[i]; maxPos = i; } }
-  if (maxPos <= 0) return -1;
-  const x1 = c[maxPos - 1] || 0, x2 = c[maxPos], x3 = c[maxPos + 1] || 0;
+  for (let i = d; i <= maxLag; i++) {
+    if (c[i] > maxVal) { maxVal = c[i]; maxPos = i; }
+  }
+  if (maxPos <= minLag) return -1;
+
+  // Interpolação parabólica para sub-sample accuracy
+  const x1 = c[maxPos - 1] || 0, x2 = c[maxPos], x3 = maxPos < maxLag ? c[maxPos + 1] : 0;
   const a = (x1 + x3 - 2 * x2) / 2, b = (x3 - x1) / 2;
-  let T0 = maxPos;
-  if (a) T0 = maxPos - b / (2 * a);
+  const T0 = a ? maxPos - b / (2 * a) : maxPos;
   if (T0 <= 0) return -1;
   return sampleRate / T0;
 }
@@ -129,6 +131,7 @@ function App() {
   const [a4, setA4] = useState(440);
 
   // tuner state
+  const [calibCents, setCalibCents] = useState(0);
   const [fixedTarget, setFixedTarget] = useState(false);
   const [sensitivity, setSensitivity] = useState(50); // 0-100, maior = mais sensível (capta sinais mais fracos)
   const [targetNote, setTargetNote] = useState(9); // A
@@ -168,6 +171,7 @@ function App() {
   const silentRef = useRef(true);
   const smoothedCentsRef = useRef(0);
   const modalModeRef = useRef('montado');
+  const calibRef = useRef(0);
   const ringAnglesRef = useRef([0, 0, 0]);
   const lastTsRef = useRef(0);
   const a4Ref = useRef(440);
@@ -185,6 +189,7 @@ function App() {
   useEffect(() => { targetFreqRef.current = noteToFreq(targetNote, targetOctave, a4); }, [targetNote, targetOctave, a4]);
   useEffect(() => { armedRef.current = armed; }, [armed]);
   useEffect(() => { modalModeRef.current = modalMode; }, [modalMode]);
+  useEffect(() => { calibRef.current = calibCents; }, [calibCents]);
   useEffect(() => { capturingRef.current = capturing; }, [capturing]);
 
   // ---- Carregar histórico de medições (localStorage) ----
@@ -280,7 +285,7 @@ function App() {
       if (!silent) ringAnglesRef.current[idx] += ring.h * cents * gain * dt * (Math.PI / 180);
       const angle = ringAnglesRef.current[idx];
       const segAngle = (Math.PI * 2) / ring.teeth;
-      const thickness = size * 0.058; // espessura real das secções
+      const thickness = size * 0.098; // espessura generosa — como disco real
       const innerR = ring.r - thickness / 2;
       const outerR = ring.r + thickness / 2;
       ctx.save();
@@ -293,7 +298,7 @@ function App() {
       for (let i = 0; i < ring.teeth; i++) {
         if (i % 2 === 0) {
           const a0 = (i / ring.teeth) * Math.PI * 2;
-          const a1 = a0 + segAngle * 0.92; // gap mínimo entre segmentos
+          const a1 = a0 + segAngle * 0.97; // gap mínimo — quase tocando
           ctx.beginPath();
           ctx.arc(0, 0, outerR, a0, a1);
           ctx.arc(0, 0, innerR, a1, a0, true);
@@ -346,7 +351,8 @@ function App() {
         silentRef.current = false;
         if (ts - lastUIRef.current > 80) {
           lastUIRef.current = ts;
-          setDisplay({ freq, note, octave, cents, silent: false });
+          const calibAdj = cents - calibRef.current;
+          setDisplay({ freq, note, octave, cents: calibAdj, silent: false });
         }
       } else if (ts - lastValidPitchRef.current > 700) {
         silentRef.current = true;
@@ -792,6 +798,15 @@ td:nth-child(2){color:#8a7060;font-family:'Lato',monospace}
                 className="flex-1 accent-emerald-500"
               />
               <span className="text-xs text-zinc-500 w-8 text-right shrink-0">{sensitivity}</span>
+            </div>
+            <div className="flex items-center gap-3 border-t border-zinc-800 pt-2 mt-1">
+              <span className="text-xs text-zinc-400 shrink-0">Calibração</span>
+              <input
+                type="range" min={-50} max={50} value={calibCents}
+                onChange={(e) => setCalibCents(Number(e.target.value))}
+                className="flex-1 accent-amber-500"
+              />
+              <span className="text-xs text-amber-500 w-12 text-right shrink-0 font-mono">{calibCents > 0 ? '+' : ''}{calibCents}¢</span>
             </div>
           </div>
         )}
