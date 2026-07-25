@@ -1,33 +1,23 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-<title>Paizinho // Bancada</title>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
+<title>PAIZINHO // Análise Modal</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
-  html, body { background:#09090b; margin:0; }
-  body { font-family: 'JetBrains Mono', monospace; }
-.print-btn{display:block;margin:28px auto 0;padding:14px 36px;background:#2a1f0f;color:#f5f0e8;border:none;border-radius:8px;font-family:'Lato',sans-serif;font-size:13px;font-weight:700;letter-spacing:0.1em;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,0.25);text-transform:uppercase}
-.print-btn:hover{background:#3d2e1a}
-@media print{.print-btn{display:none!important}}
+  html,body { margin:0; background:#09090b; }
 </style>
 </head>
 <body>
 <div id="root"></div>
 <script type="text/jsx-source" id="app-source">
+
 const { useState, useRef, useEffect, useCallback } = React;
 
-// ---------------------------------------------------------------------------
-// Constantes e helpers de teoria musical / DSP
-// ---------------------------------------------------------------------------
-const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-const SYNTONIC_COMMA = 21.51; // cents
-const PYTHAGOREAN_COMMA = 23.46; // cents
 const MEASURE_MODES = {
   montado: {
     label: 'Instrumento Montado', btn: '🎸',
@@ -47,56 +37,8 @@ const MEASURE_MODES = {
 };
 const DEFAULT_PEAK_LABELS = MEASURE_MODES.montado.labels;
 
-function freqToMidiCents(freq, a4) {
-  const midi = 69 + 12 * Math.log2(freq / a4);
-  const rounded = Math.round(midi);
-  const cents = (midi - rounded) * 100;
-  const noteIndex = ((rounded % 12) + 12) % 12;
-  const octave = Math.floor(rounded / 12) - 1;
-  return { note: NOTE_NAMES[noteIndex], octave, cents, midi: rounded };
-}
-
-function noteToFreq(noteIndex, octave, a4) {
-  const midi = (octave + 1) * 12 + noteIndex;
-  return a4 * Math.pow(2, (midi - 69) / 12);
-}
-
-// Autocorrelação clássica (ACF) para detecção de pitch em sinal monofônico
-function autoCorrelate(buf, sampleRate, silenceThreshold) {
-  const SIZE = buf.length;
-  let rms = 0;
-  for (let i = 0; i < SIZE; i++) rms += buf[i] * buf[i];
-  rms = Math.sqrt(rms / SIZE);
-  if (rms < (silenceThreshold !== undefined ? silenceThreshold : 0.012)) return -1;
-
-  // Range de lags para freq entre 55 Hz e 1500 Hz
-  const minLag = Math.floor(sampleRate / 1500);
-  const maxLag = Math.min(SIZE - 1, Math.ceil(sampleRate / 55));
-
-  // Autocorrelação normalizada no range de interesse
-  const c = new Float32Array(maxLag + 1);
-  for (let lag = minLag; lag <= maxLag; lag++) {
-    let sum = 0, n = SIZE - lag;
-    for (let j = 0; j < n; j++) sum += buf[j] * buf[j + lag];
-    c[lag] = sum / n; // normaliza pelo número de amostras usadas
-  }
-
-  // Pular descida inicial, procurar o melhor pico no range
-  let d = minLag;
-  while (d < maxLag && c[d] > c[d + 1]) d++;
-  let maxVal = -1, maxPos = -1;
-  for (let i = d; i <= maxLag; i++) {
-    if (c[i] > maxVal) { maxVal = c[i]; maxPos = i; }
-  }
-  if (maxPos <= minLag) return -1;
-
-  // Interpolação parabólica para sub-sample accuracy
-  const x1 = c[maxPos - 1] || 0, x2 = c[maxPos], x3 = maxPos < maxLag ? c[maxPos + 1] : 0;
-  const a = (x1 + x3 - 2 * x2) / 2, b = (x3 - x1) / 2;
-  const T0 = a ? maxPos - b / (2 * a) : maxPos;
-  if (T0 <= 0) return -1;
-  return sampleRate / T0;
-}
+function formatHz(v) { return v >= 1000 ? `${(v / 1000).toFixed(3)} kHz` : `${v.toFixed(1)} Hz`; }
+function uid() { return Math.random().toString(36).slice(2, 10); }
 
 function findPeaks(magDb, sampleRate, fftSize, opts = {}) {
   const { fMin = 55, fMax = 1200, maxPeaks = 6 } = opts;
@@ -119,92 +61,67 @@ function findPeaks(magDb, sampleRate, fftSize, opts = {}) {
   return selected;
 }
 
-function formatHz(v) { return v >= 1000 ? `${(v / 1000).toFixed(3)} kHz` : `${v.toFixed(1)} Hz`; }
-function uid() { return Math.random().toString(36).slice(2, 10); }
-
-// ---------------------------------------------------------------------------
-// Componente principal
-// ---------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
 function App() {
-  const [activeTab, setActiveTab] = useState('tuner');
-  const [micState, setMicState] = useState('idle'); // idle | requesting | granted | denied
-  const [a4, setA4] = useState(440);
+  // ── Tema ──────────────────────────────────────────────────────────────────
+  const [dark, setDark] = useState(true);
+  const th = {
+    bg:      dark ? '#09090b' : '#faf8f5',
+    card:    dark ? '#18181b' : '#ffffff',
+    border:  dark ? '#27272a' : '#e2ddd8',
+    text:    dark ? '#f4f4f5' : '#1c1917',
+    muted:   dark ? '#71717a' : '#78716c',
+    accent:  '#f59e0b',
+    accentT: dark ? 'rgba(245,158,11,0.15)' : 'rgba(245,158,11,0.12)',
+    scan:    dark ? 'repeating-linear-gradient(0deg,rgba(255,255,255,0.015) 0,rgba(255,255,255,0.015) 1px,transparent 1px,transparent 3px)' : 'none',
+  };
 
-  // tuner state
-  const [calibCents, setCalibCents] = useState(0);
-  const [fixedTarget, setFixedTarget] = useState(false);
-  const [sensitivity, setSensitivity] = useState(50); // 0-100, maior = mais sensível (capta sinais mais fracos)
-  const [targetNote, setTargetNote] = useState(9); // A
-  const [targetOctave, setTargetOctave] = useState(4);
-  const [display, setDisplay] = useState({ freq: 0, note: '--', octave: '', cents: 0, silent: true });
+  // ── Mic ───────────────────────────────────────────────────────────────────
+  const [micState, setMicState] = useState('idle');
 
-  // modal tab state
-  const [modalMode, setModalMode] = useState('montado');
-  const [armed, setArmed] = useState(false);
-  const [capturing, setCapturing] = useState(false);
+  // ── Análise modal ─────────────────────────────────────────────────────────
+  const [modalMode,     setModalMode]     = useState('montado');
+  const [armed,         setArmed]         = useState(false);
+  const [capturing,     setCapturing]     = useState(false);
   const [captureProgress, setCaptureProgress] = useState(0);
-  const [peaks, setPeaks] = useState([]);
-  const [instrument, setInstrument] = useState('');
-  const [noteField, setNoteField] = useState('');
-  const [measurements, setMeasurements] = useState([]);
-  const [storageReady, setStorageReady] = useState(false);
-  const [liveLevel, setLiveLevel] = useState(0);
+  const [peaks,         setPeaks]         = useState([]);
+  const [instrument,    setInstrument]    = useState('');
+  const [noteField,     setNoteField]     = useState('');
+  const [measurements,  setMeasurements]  = useState([]);
+  const [storageReady,  setStorageReady]  = useState(false);
+  const [liveLevel,     setLiveLevel]     = useState(0);
 
-  const audioCtxRef = useRef(null);
-  const streamRef = useRef(null);
-  const tunerAnalyserRef = useRef(null);
-  const modalAnalyserRef = useRef(null);
-  const timeBufRef = useRef(null);
-  const modalTimeBufRef = useRef(null);
-  const freqBufRef = useRef(null);
-  const maxHoldRef = useRef(null);
-  const frozenSpectrumRef = useRef(null);
-  const freezeUntilRef = useRef(0);
-  const frozenImageRef = useRef(null);
-  const captureStartRef = useRef(0);
-  const rafRef = useRef(null);
+  // ── Refs ──────────────────────────────────────────────────────────────────
+  const audioCtxRef        = useRef(null);
+  const streamRef          = useRef(null);
+  const modalAnalyserRef   = useRef(null);
+  const modalTimeBufRef    = useRef(null);
+  const freqBufRef         = useRef(null);
+  const maxHoldRef         = useRef(null);
+  const frozenSpectrumRef  = useRef(null);
+  const freezeUntilRef     = useRef(0);
+  const frozenImageRef     = useRef(null);
+  const captureStartRef    = useRef(0);
+  const rafRef             = useRef(null);
+  const armedRef           = useRef(false);
+  const capturingRef       = useRef(false);
+  const modalModeRef       = useRef('montado');
+  const spectrumCanvasRef  = useRef(null);
 
-  const centsRef = useRef(0);
-  const lastUIRef = useRef(0);
-  const sensitivityRef = useRef(50);
-  const lastValidPitchRef = useRef(0);
-  const silentRef = useRef(true);
-  const smoothedCentsRef = useRef(0);
-  const modalModeRef = useRef('montado');
-  const calibRef = useRef(0);
-  const ringAnglesRef = useRef([0, 0, 0]);
-  const lastTsRef = useRef(0);
-  const a4Ref = useRef(440);
-  const fixedTargetRef = useRef(false);
-  const targetFreqRef = useRef(440);
-  const armedRef = useRef(false);
-  const capturingRef = useRef(false);
-
-  const strobeCanvasRef = useRef(null);
-  const spectrumCanvasRef = useRef(null);
-
-  useEffect(() => { a4Ref.current = a4; }, [a4]);
-  useEffect(() => { fixedTargetRef.current = fixedTarget; }, [fixedTarget]);
-  useEffect(() => { sensitivityRef.current = sensitivity; }, [sensitivity]);
-  useEffect(() => { targetFreqRef.current = noteToFreq(targetNote, targetOctave, a4); }, [targetNote, targetOctave, a4]);
-  useEffect(() => { armedRef.current = armed; }, [armed]);
-  useEffect(() => { modalModeRef.current = modalMode; }, [modalMode]);
-  useEffect(() => { calibRef.current = calibCents; }, [calibCents]);
+  useEffect(() => { armedRef.current    = armed;     }, [armed]);
   useEffect(() => { capturingRef.current = capturing; }, [capturing]);
+  useEffect(() => { modalModeRef.current = modalMode; }, [modalMode]);
 
-  // ---- Carregar histórico de medições (localStorage) ----
+  // ── Carregar histórico ────────────────────────────────────────────────────
   useEffect(() => {
     try {
       const raw = localStorage.getItem('paizinho-modal-measurements');
       if (raw) setMeasurements(JSON.parse(raw));
-    } catch (e) {
-      // histórico corrompido ou inexistente — começa vazio
-    } finally {
-      setStorageReady(true);
-    }
+    } catch (e) {}
+    finally { setStorageReady(true); }
   }, []);
 
-  function persistMeasurements(next) {
+function persistMeasurements(next) {
     setMeasurements(next);
     try {
       localStorage.setItem('paizinho-modal-measurements', JSON.stringify(next));
@@ -214,252 +131,129 @@ function App() {
   }
 
   // ---- Ativar microfone ----
+
+  // ── Ativar mic ────────────────────────────────────────────────────────────
   async function enableMic() {
     setMicState('requesting');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
       });
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const ctx    = new (window.AudioContext || window.webkitAudioContext)();
       const source = ctx.createMediaStreamSource(stream);
-
-      const tunerAnalyser = ctx.createAnalyser();
-      tunerAnalyser.fftSize = 2048;
-      source.connect(tunerAnalyser);
-
-      const modalAnalyser = ctx.createAnalyser();
-      modalAnalyser.fftSize = 8192;
-      modalAnalyser.smoothingTimeConstant = 0.15;
-      modalAnalyser.minDecibels = -100;
-      modalAnalyser.maxDecibels = -20;
-      source.connect(modalAnalyser);
-
-      audioCtxRef.current = ctx;
-      streamRef.current = stream;
-      tunerAnalyserRef.current = tunerAnalyser;
-      modalAnalyserRef.current = modalAnalyser;
-      timeBufRef.current = new Float32Array(tunerAnalyser.fftSize);
-      modalTimeBufRef.current = new Float32Array(modalAnalyser.fftSize);
-      freqBufRef.current = new Float32Array(modalAnalyser.frequencyBinCount);
-      maxHoldRef.current = new Float32Array(modalAnalyser.frequencyBinCount).fill(-150);
-
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 8192;
+      analyser.smoothingTimeConstant = 0.15;
+      analyser.minDecibels = -100;
+      analyser.maxDecibels  = -20;
+      source.connect(analyser);
+      audioCtxRef.current       = ctx;
+      streamRef.current         = stream;
+      modalAnalyserRef.current  = analyser;
+      modalTimeBufRef.current   = new Float32Array(analyser.fftSize);
+      freqBufRef.current        = new Float32Array(analyser.frequencyBinCount);
+      maxHoldRef.current        = new Float32Array(analyser.frequencyBinCount).fill(-150);
       setMicState('granted');
-    } catch (e) {
-      setMicState('denied');
-    }
+    } catch (e) { setMicState('denied'); }
   }
 
   useEffect(() => () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
+    if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
     if (audioCtxRef.current) audioCtxRef.current.close();
   }, []);
 
-  // ---- Desenho do disco estroboscópico ----
-  function drawStrobe(ts) {
-    const canvas = strobeCanvasRef.current;
-    if (!canvas) return;
-    const dpr = window.devicePixelRatio || 1;
-    const cssSize = canvas.clientWidth || 280;
-    if (canvas.width !== cssSize * dpr) { canvas.width = cssSize * dpr; canvas.height = cssSize * dpr; }
-    const ctx = canvas.getContext('2d');
-    const size = cssSize;
-    ctx.save();
-    ctx.scale(dpr, dpr);
-    ctx.clearRect(0, 0, size, size);
-    const dt = lastTsRef.current ? Math.min((ts - lastTsRef.current) / 1000, 0.1) : 0;
-    lastTsRef.current = ts;
-    const rawCents = silentRef.current ? 0 : centsRef.current;
-    smoothedCentsRef.current = smoothedCentsRef.current * 0.85 + rawCents * 0.15;
-    const cents = smoothedCentsRef.current;
-    const gain = 0.32;
-    const inTune = !silentRef.current && Math.abs(rawCents) < 1.5;
-    const silent = silentRef.current;
-    const cx = size / 2, cy = size / 2;
-    const rings = [
-      { r: size * 0.46, teeth: 36, h: 1, col: '#22d3ee', glow: '#0891b2' },
-      { r: size * 0.34, teeth: 24, h: 2, col: '#f59e0b', glow: '#b45309' },
-      { r: size * 0.22, teeth: 16, h: 3, col: '#f87171', glow: '#dc2626' },
-    ];
-    rings.forEach((ring, idx) => {
-      if (!silent) ringAnglesRef.current[idx] += ring.h * cents * gain * dt * (Math.PI / 180);
-      const angle = ringAnglesRef.current[idx];
-      const segAngle = (Math.PI * 2) / ring.teeth;
-      const thickness = size * 0.098; // espessura generosa — como disco real
-      const innerR = ring.r - thickness / 2;
-      const outerR = ring.r + thickness / 2;
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate(angle);
-      ctx.fillStyle = ring.col;
-      ctx.shadowColor = ring.col;
-      ctx.shadowBlur = silent ? 0 : (inTune ? 18 : 7);
-      ctx.globalAlpha = silent ? 0.18 : (inTune ? 1.0 : 0.82);
-      for (let i = 0; i < ring.teeth; i++) {
-        if (i % 2 === 0) {
-          const a0 = (i / ring.teeth) * Math.PI * 2;
-          const a1 = a0 + segAngle * 0.97; // gap mínimo — quase tocando
-          ctx.beginPath();
-          ctx.arc(0, 0, outerR, a0, a1);
-          ctx.arc(0, 0, innerR, a1, a0, true);
-          ctx.closePath();
-          ctx.fill();
-        }
-      }
-      ctx.restore();
-    });
-    const dotCol = silent ? '#52525b' : inTune ? '#34d399' : Math.abs(rawCents) < 8 ? '#fbbf24' : '#f87171';
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.shadowColor = dotCol; ctx.shadowBlur = silent ? 0 : 10;
-    ctx.beginPath(); ctx.arc(0, 0, size * 0.038, 0, Math.PI * 2);
-    ctx.fillStyle = dotCol; ctx.fill();
-    ctx.restore();
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.strokeStyle = inTune ? '#34d399' : '#52525b';
-    ctx.lineWidth = 2.5;
-    ctx.shadowColor = inTune ? '#34d399' : 'transparent';
-    ctx.shadowBlur = inTune ? 8 : 0;
-    ctx.beginPath();
-    ctx.moveTo(0, -size * 0.48); ctx.lineTo(0, -size * 0.52);
-    ctx.stroke();
-    ctx.restore();
-    ctx.restore();
-  }
-
-  // ---- Loop do afinador ----
-  const tunerLoop = useCallback((ts) => {
-    const analyser = tunerAnalyserRef.current;
-    if (analyser) {
-      analyser.getFloatTimeDomainData(timeBufRef.current);
-      // sensibilidade 0-100 -> limiar de ruído entre 0.03 (pouco sensível) e 0.003 (muito sensível)
-      const threshold = 0.03 - (sensitivityRef.current / 100) * (0.03 - 0.003);
-      const freq = autoCorrelate(timeBufRef.current, audioCtxRef.current.sampleRate, threshold);
-      if (freq > 55 && freq < 1500) {
-        let cents, note, octave;
-        if (fixedTargetRef.current) {
-          cents = 1200 * Math.log2(freq / targetFreqRef.current);
-          note = NOTE_NAMES[targetNote];
-          octave = targetOctave;
-        } else {
-          const info = freqToMidiCents(freq, a4Ref.current);
-          cents = info.cents; note = info.note; octave = info.octave;
-        }
-        centsRef.current = Math.max(-60, Math.min(60, cents));
-        lastValidPitchRef.current = ts;
-        silentRef.current = false;
-        if (ts - lastUIRef.current > 80) {
-          lastUIRef.current = ts;
-          const calibAdj = cents - calibRef.current;
-          setDisplay({ freq, note, octave, cents: calibAdj, silent: false });
-        }
-      } else if (ts - lastValidPitchRef.current > 700) {
-        silentRef.current = true;
-        if (ts - lastUIRef.current > 150) {
-          lastUIRef.current = ts;
-          setDisplay((d) => (d.silent ? d : { ...d, silent: true }));
-        }
-      }
-    }
-    drawStrobe(ts);
-    rafRef.current = requestAnimationFrame(tunerLoop);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetNote, targetOctave]);
-
-  // ---- Desenho do espectro ----
+  // ── Desenho do espectro ───────────────────────────────────────────────────
   function drawSpectrum(magDb, peakList, frozen) {
     const canvas = spectrumCanvasRef.current;
     if (!canvas) return;
-    const dpr = window.devicePixelRatio || 1;
-    const cssW = canvas.clientWidth || 320;
-    const cssH = canvas.clientHeight || 200;
+    const dpr  = window.devicePixelRatio || 1;
+    const cssW = canvas.clientWidth  || 320;
+    const cssH = canvas.clientHeight || 220;
     if (canvas.width !== cssW * dpr) { canvas.width = cssW * dpr; canvas.height = cssH * dpr; }
     const ctx = canvas.getContext('2d');
-    ctx.save();
-    ctx.scale(dpr, dpr);
-    ctx.clearRect(0, 0, cssW, cssH);
+    ctx.save(); ctx.scale(dpr, dpr); ctx.clearRect(0, 0, cssW, cssH);
 
     const fMin = 55, fMax = 1200, dbMin = -100, dbMax = -20;
-    const sampleRate = audioCtxRef.current ? audioCtxRef.current.sampleRate : 48000;
-    const fftSize = modalAnalyserRef.current ? modalAnalyserRef.current.fftSize : 8192;
-    const binHz = sampleRate / fftSize;
-    const padL = 6, padR = 6, padT = 10, padB = 18;
+    const sr   = audioCtxRef.current ? audioCtxRef.current.sampleRate : 48000;
+    const fftSz = modalAnalyserRef.current ? modalAnalyserRef.current.fftSize : 8192;
+    const binHz = sr / fftSz;
+    const padL = 28, padR = 8, padT = 14, padB = 22;
     const w = cssW - padL - padR, h = cssH - padT - padB;
+    const xF = f  => padL + ((Math.log10(f) - Math.log10(fMin)) / (Math.log10(fMax) - Math.log10(fMin))) * w;
+    const yD = db => padT + (1 - (db - dbMin) / (dbMax - dbMin)) * h;
 
-    const xForFreq = (f) => padL + ((Math.log10(f) - Math.log10(fMin)) / (Math.log10(fMax) - Math.log10(fMin))) * w;
-    const yForDb = (db) => padT + (1 - (db - dbMin) / (dbMax - dbMin)) * h;
-
-    // grade
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.font = '9px monospace';
-    [100, 200, 400, 800].forEach((f) => {
-      const x = xForFreq(f);
-      ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + h); ctx.stroke();
-      ctx.fillText(`${f}`, x - 8, cssH - 4);
+    // dB axis
+    ctx.fillStyle = dark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.35)';
+    ctx.font = '8px monospace';
+    [-80, -60, -40].forEach(db => {
+      const y = yD(db);
+      ctx.strokeStyle = dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.07)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + w, y); ctx.stroke();
+      ctx.fillText(`${db}`, 0, y + 3);
     });
 
-    // aviso de "congelado"
+    // freq grid
+    [100, 200, 400, 800].forEach(f => {
+      const x = xF(f);
+      ctx.strokeStyle = dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.07)';
+      ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + h); ctx.stroke();
+      ctx.fillStyle = dark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.35)';
+      ctx.fillText(`${f}`, x - 8, cssH - 5);
+    });
+
     if (frozen) {
-      ctx.fillStyle = 'rgba(167,243,208,0.9)';
-      ctx.font = 'bold 10px monospace';
-      ctx.fillText('● CAPTURADO — segurando p/ print', padL, padT - 2);
+      ctx.fillStyle = '#34d399';
+      ctx.font = 'bold 9px monospace';
+      ctx.fillText('\u25cf CAPTURADO', padL, padT - 3);
     }
 
-    // traço do espectro
+    // spectrum line
     ctx.beginPath();
-    ctx.strokeStyle = frozen ? '#67e8f9' : 'rgba(251,191,36,0.55)';
-    ctx.lineWidth = frozen ? 1.8 : 1.2;
+    ctx.strokeStyle = frozen ? '#67e8f9' : (dark ? 'rgba(245,158,11,0.6)' : 'rgba(180,110,0,0.7)');
+    ctx.lineWidth = frozen ? 1.8 : 1.3;
     ctx.shadowColor = frozen ? '#67e8f9' : 'transparent';
-    ctx.shadowBlur = frozen ? 6 : 0;
+    ctx.shadowBlur  = frozen ? 5 : 0;
     let first = true;
-    for (let x = 0; x <= w; x += 1) {
-      const f = Math.pow(10, Math.log10(fMin) + (x / w) * (Math.log10(fMax) - Math.log10(fMin)));
+    for (let x = 0; x <= w; x++) {
+      const f   = Math.pow(10, Math.log10(fMin) + (x / w) * (Math.log10(fMax) - Math.log10(fMin)));
       const bin = Math.round(f / binHz);
-      const db = magDb[bin] !== undefined ? Math.max(dbMin, magDb[bin]) : dbMin;
-      const y = yForDb(db);
+      const db  = magDb[bin] !== undefined ? Math.max(dbMin, magDb[bin]) : dbMin;
+      const y   = yD(db);
       if (first) { ctx.moveTo(padL + x, y); first = false; } else { ctx.lineTo(padL + x, y); }
     }
-    ctx.stroke();
-    ctx.shadowBlur = 0;
+    ctx.stroke(); ctx.shadowBlur = 0;
 
-    // picos marcados
-    peakList.forEach((p) => {
-      const x = xForFreq(p.freq);
-      const y = yForDb(p.db);
-      const peakColor = frozen ? '#fde047' : 'rgba(52,211,153,0.7)';
-      ctx.strokeStyle = peakColor;
-      ctx.setLineDash([2, 2]);
+    // peaks
+    peakList.forEach(p => {
+      const x = xF(p.freq), y = yD(p.db);
+      const pc = frozen ? '#fde047' : '#34d399';
+      ctx.strokeStyle = pc; ctx.setLineDash([2, 2]);
+      ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, padT + h); ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = frozen ? '#fde047' : '#34d399';
-      ctx.shadowColor = frozen ? '#fde047' : 'transparent';
-      ctx.shadowBlur = frozen ? 5 : 0;
+      ctx.fillStyle = pc; ctx.shadowColor = pc; ctx.shadowBlur = frozen ? 5 : 0;
       ctx.beginPath(); ctx.arc(x, y, frozen ? 3.5 : 2.5, 0, Math.PI * 2); ctx.fill();
       ctx.shadowBlur = 0;
     });
-
     ctx.restore();
   }
 
-  // ---- Loop do modo modal (espectro ao vivo + detecção de batida) ----
-  const modalLoop = useCallback((ts) => {
+  // ── Loop modal ────────────────────────────────────────────────────────────
+  const modalLoop = useCallback(ts => {
     const analyser = modalAnalyserRef.current;
     if (analyser) {
       analyser.getFloatTimeDomainData(modalTimeBufRef.current);
       let rms = 0;
-      for (let i = 0; i < modalTimeBufRef.current.length; i++) rms += modalTimeBufRef.current[i] * modalTimeBufRef.current[i];
+      for (let i = 0; i < modalTimeBufRef.current.length; i++) rms += modalTimeBufRef.current[i] ** 2;
       rms = Math.sqrt(rms / modalTimeBufRef.current.length);
-      setLiveLevel((prev) => prev * 0.7 + rms * 0.3);
-
+      setLiveLevel(prev => prev * 0.7 + rms * 0.3);
       analyser.getFloatFrequencyData(freqBufRef.current);
 
       if (armedRef.current && !capturingRef.current && rms > 0.035) {
-        capturingRef.current = true;
-        setCapturing(true);
-        captureStartRef.current = ts;
-        maxHoldRef.current.fill(-150);
+        capturingRef.current = true; setCapturing(true);
+        captureStartRef.current = ts; maxHoldRef.current.fill(-150);
       }
       if (capturingRef.current) {
         for (let i = 0; i < freqBufRef.current.length; i++) {
@@ -468,82 +262,53 @@ function App() {
         const elapsed = ts - captureStartRef.current;
         setCaptureProgress(Math.min(1, elapsed / 1400));
         if (elapsed >= 1400) {
-          capturingRef.current = false;
-          armedRef.current = false;
-          setCapturing(false);
-          setArmed(false);
+          capturingRef.current = false; armedRef.current = false;
+          setCapturing(false); setArmed(false);
           const modeConf = MEASURE_MODES[modalModeRef.current] || MEASURE_MODES.montado;
-          const found = findPeaks(maxHoldRef.current, audioCtxRef.current.sampleRate, analyser.fftSize, { maxPeaks: 7, fMin: modeConf.fMin, fMax: modeConf.fMax });
-          const labeled = found.map((p, idx) => ({ ...p, label: modeConf.labels[idx] || `Modo ${idx + 1}`, id: uid() }));
+          const found    = findPeaks(maxHoldRef.current, audioCtxRef.current.sampleRate, analyser.fftSize, { maxPeaks: 7, fMin: modeConf.fMin, fMax: modeConf.fMax });
+          const labeled  = found.map((p, idx) => ({ ...p, label: modeConf.labels[idx] || `Modo ${idx + 1}`, id: uid() }));
           setPeaks(labeled);
           frozenSpectrumRef.current = maxHoldRef.current.slice();
-          freezeUntilRef.current = ts + 3500;
+          freezeUntilRef.current    = ts + 3500;
           drawSpectrum(maxHoldRef.current, labeled, true);
-          if (spectrumCanvasRef.current) {
-            frozenImageRef.current = spectrumCanvasRef.current.toDataURL('image/jpeg', 0.88);
-          }
-        } else {
-          drawSpectrum(maxHoldRef.current, [], true);
-        }
+          if (spectrumCanvasRef.current) frozenImageRef.current = spectrumCanvasRef.current.toDataURL('image/jpeg', 0.88);
+        } else { drawSpectrum(maxHoldRef.current, [], true); }
       } else if (frozenSpectrumRef.current && ts < freezeUntilRef.current) {
         drawSpectrum(frozenSpectrumRef.current, peaks, true);
-      } else {
-        drawSpectrum(freqBufRef.current, peaks, false);
-      }
+      } else { drawSpectrum(freqBufRef.current, peaks, false); }
     }
     rafRef.current = requestAnimationFrame(modalLoop);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [peaks]);
+  }, [peaks, dark]);
 
-  // ---- Gerenciar qual loop está ativo ----
   useEffect(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     if (micState !== 'granted') return;
-    if (activeTab === 'tuner') rafRef.current = requestAnimationFrame(tunerLoop);
-    else rafRef.current = requestAnimationFrame(modalLoop);
+    rafRef.current = requestAnimationFrame(modalLoop);
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, [activeTab, micState, tunerLoop, modalLoop]);
+  }, [micState, modalLoop]);
 
-  function startListeningForTap() {
-    setPeaks([]);
-    setArmed(true);
+  function startCapture() { setPeaks([]); setArmed(true); }
+  function cancelCapture() {
+    setArmed(false); setCapturing(false);
+    armedRef.current = false; capturingRef.current = false; setCaptureProgress(0);
   }
-  function cancelTap() {
-    setArmed(false);
-    setCapturing(false);
-    capturingRef.current = false;
-    armedRef.current = false;
-    setCaptureProgress(0);
-  }
-  function updatePeakLabel(id, label) {
-    setPeaks((prev) => prev.map((p) => (p.id === id ? { ...p, label } : p)));
-  }
+  function updatePeakLabel(id, label) { setPeaks(prev => prev.map(p => p.id === id ? { ...p, label } : p)); }
+
   function getNextSerial() {
-    const key = 'paizinho-cert-serial';
-    const current = parseInt(localStorage.getItem(key) || '0', 10);
-    const next = current + 1;
-    localStorage.setItem(key, String(next));
-    return `PAI-${String(next).padStart(5, '0')}`;
+    const k = 'paizinho-cert-serial';
+    const n = parseInt(localStorage.getItem(k) || '0', 10) + 1;
+    localStorage.setItem(k, String(n));
+    return `PAI-${String(n).padStart(5, '0')}`;
   }
   function saveMeasurement() {
     if (!peaks.length) return;
-    const record = {
-      id: uid(),
-      serial: getNextSerial(),
-      timestamp: new Date().toISOString(),
-      instrument: instrument.trim() || 'Sem nome',
-      note: noteField.trim(),
-      a4,
-      peaks: peaks.map((p) => ({ freq: p.freq, db: p.db, label: p.label })),
-      spectrumImage: frozenImageRef.current || null,
-    };
+    const record = { id: uid(), serial: getNextSerial(), timestamp: new Date().toISOString(), instrument: instrument.trim() || 'Sem nome', note: noteField.trim(), a4: 440, peaks: peaks.map(p => ({ freq: p.freq, db: p.db, label: p.label })), spectrumImage: frozenImageRef.current || null };
     persistMeasurements([record, ...measurements]);
     setNoteField('');
   }
-  function deleteMeasurement(id) {
-    persistMeasurements(measurements.filter((m) => m.id !== id));
-  }
-  function getModeType(label) {
+  function deleteMeasurement(id) { persistMeasurements(measurements.filter(m => m.id !== id)); }
+
+function getModeType(label) {
     const l = (label || '').toLowerCase();
     if (l.includes('helmholtz') || l.includes('a0') || l.includes('t(1,1)1') || l.includes('t(1,1)\u2081')) return 'resson\u00e2ncia de ar';
     if (l.includes('tampo') || l.includes('t(1,1)2') || l.includes('t(1,1)\u2082')) return 'monopolo \u00b7 tampo';
@@ -553,7 +318,7 @@ function App() {
     if (l.includes('t(3,1)')) return 'tripolo cruzado';
     return 'modo superior';
   }
-  function generateCertificate(m) {
+function generateCertificate(m) {
     const tampo = m.peaks.find(p => { const l = (p.label||'').toLowerCase(); return l.includes('tampo')||l.includes('t(1,1)2')||l.includes('t(1,1)\u2082'); }) || m.peaks[1];
     const fundo = m.peaks.find(p => { const l = (p.label||'').toLowerCase(); return l.includes('fundo')||l.includes('acoplado')||l.includes('t(1,1)3')||l.includes('t(1,1)\u2083'); }) || m.peaks[2];
     let semitoneBlock = '';
@@ -657,287 +422,188 @@ td:nth-child(2){color:#8a7060;font-family:'Lato',monospace}
     if (w) { w.document.write(html); w.document.close(); }
   }
 
-  const instrumentNames = Array.from(new Set(measurements.map((m) => m.instrument))).slice(0, 12);
-  const centsAbs = Math.abs(display.cents || 0);
-  const inTune = !display.silent && centsAbs < 1.5;
-  const accentClass = display.silent ? 'text-zinc-500' : inTune ? 'text-emerald-400' : centsAbs < 5 ? 'text-lime-400' : 'text-amber-400';
-  const commaSyn = (display.cents || 0) / SYNTONIC_COMMA;
-  const commaPyth = (display.cents || 0) / PYTHAGOREAN_COMMA;
+  const instrumentNames = Array.from(new Set(measurements.map(m => m.instrument))).slice(0, 12);
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  const bdCard   = `1px solid ${th.border}`;
+  const tMuted   = { color: th.muted, fontSize: '11px' };
+  const tAccent  = { color: th.accent };
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 p-3 sm:p-6" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+    <div style={{ minHeight: '100vh', background: th.bg, color: th.text, fontFamily: "'JetBrains Mono',monospace", padding: '12px 14px 32px' }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
-        .font-disp { font-family: 'Archivo', sans-serif; }
-        .scanlines { background-image: repeating-linear-gradient(0deg, rgba(255,255,255,0.02) 0px, rgba(255,255,255,0.02) 1px, transparent 1px, transparent 3px); }
-        @keyframes pulseSlow { 0%,100% { opacity: .4 } 50% { opacity: 1 } }
-        .pulse-slow { animation: pulseSlow 1.4s ease-in-out infinite; }
-        select, input { color-scheme: dark; }
+        @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        .font-arch { font-family:'Archivo',sans-serif; }
+        @keyframes pulseSlow { 0%,100%{opacity:.4} 50%{opacity:1} }
+        .pulse { animation: pulseSlow 1.3s ease-in-out infinite; }
+        input[type=range] { accent-color: #f59e0b; }
+        select,input[type=text] { color-scheme: ${dark ? 'dark' : 'light'}; }
+        ::-webkit-scrollbar { width:4px } ::-webkit-scrollbar-thumb { background:${th.border}; border-radius:2px }
       `}</style>
 
-      <div className="max-w-3xl mx-auto">
-        <header className="mb-4">
-          <h1 className="font-disp text-lg sm:text-xl font-bold tracking-tight text-zinc-100">PAIZINHO <span className="text-zinc-500">// BANCADA</span></h1>
-          <p className="text-xs text-zinc-500 tracking-wide">afinador estroboscópico + análise modal de tampo/caixa</p>
-        </header>
+      {/* ── Header ── */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'16px' }}>
+        <div>
+          <div className="font-arch" style={{ fontSize:'17px', fontWeight:700, letterSpacing:'-0.01em' }}>
+            PAIZINHO <span style={tMuted}>// ANÁLISE MODAL</span>
+          </div>
+          <div style={{ ...tMuted, fontSize:'10px', letterSpacing:'0.12em', textTransform:'uppercase' }}>
+            acústica de tampo · caixa · fundo
+          </div>
+        </div>
+        <button onClick={() => setDark(!dark)}
+          style={{ background: th.accentT, border:`1px solid ${th.border}`, borderRadius:'8px', padding:'7px 12px', cursor:'pointer', fontSize:'16px', color: th.text }}>
+          {dark ? '☀️' : '🌙'}
+        </button>
+      </div>
 
-        {/* Seletor de modo — estilo chave rotativa */}
-        <div className="grid grid-cols-2 gap-2 mb-4 p-1 bg-zinc-900 rounded-lg border border-zinc-800">
-          <button
-            onClick={() => setActiveTab('tuner')}
-            className={`flex items-center justify-center gap-2 py-2.5 rounded-md text-sm font-disp font-semibold transition ${activeTab === 'tuner' ? 'bg-zinc-800 text-emerald-400' : 'text-zinc-500'}`}
-          >
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${activeTab === 'tuner' ? 'bg-emerald-400' : 'bg-zinc-700'}`}
-              style={activeTab === 'tuner' ? { boxShadow: '0 0 6px 2px rgba(52,211,153,0.7)' } : undefined}
-            />
-            AFINADOR
-          </button>
-          <button
-            onClick={() => setActiveTab('modal')}
-            className={`flex items-center justify-center gap-2 py-2.5 rounded-md text-sm font-disp font-semibold transition ${activeTab === 'modal' ? 'bg-zinc-800 text-amber-400' : 'text-zinc-500'}`}
-          >
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${activeTab === 'modal' ? 'bg-amber-400' : 'bg-zinc-700'}`}
-              style={activeTab === 'modal' ? { boxShadow: '0 0 6px 2px rgba(251,191,36,0.7)' } : undefined}
-            />
-            ANÁLISE MODAL
+      {/* ── Mic gate ── */}
+      {micState !== 'granted' && (
+        <div style={{ background: th.card, border: bdCard, borderRadius:'12px', padding:'32px 20px', textAlign:'center', marginBottom:'14px' }}>
+          <div style={{ fontSize:'32px', marginBottom:'12px' }}>🎙</div>
+          <p style={{ ...tMuted, marginBottom:'16px', lineHeight:'1.6' }}>
+            {micState === 'denied'
+              ? 'Permissão de microfone negada. Libere nas configurações do navegador.'
+              : 'Ative o microfone para iniciar a análise.'}
+          </p>
+          <button onClick={enableMic} disabled={micState === 'requesting'}
+            style={{ background:'#f59e0b', color:'#1c1917', fontFamily:"'Archivo',sans-serif", fontWeight:700, fontSize:'13px', padding:'12px 28px', borderRadius:'8px', border:'none', cursor:'pointer', opacity: micState === 'requesting' ? 0.6 : 1 }}>
+            {micState === 'requesting' ? 'Solicitando...' : 'Ativar Microfone'}
           </button>
         </div>
+      )}
 
-        {/* Gate de microfone */}
-        {micState !== 'granted' && (
-          <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-6 text-center mb-4">
-            <p className="text-sm text-zinc-400 mb-4">
-              {micState === 'denied'
-                ? 'Permissão de microfone negada. Libere o acesso ao microfone nas configurações do navegador e tente novamente.'
-                : 'Ative o microfone para começar a captar áudio.'}
-            </p>
-            <button
-              onClick={enableMic}
-              disabled={micState === 'requesting'}
-              className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-disp font-semibold rounded-md text-sm disabled:opacity-50"
-            >
-              {micState === 'requesting' ? 'Solicitando...' : 'Ativar microfone'}
-            </button>
+      {micState === 'granted' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
+
+          {/* ── Seletor de modo ── */}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'6px' }}>
+            {Object.entries(MEASURE_MODES).map(([key, m]) => (
+              <button key={key} onClick={() => { setModalMode(key); setPeaks([]); }}
+                style={{
+                  padding:'9px 4px', borderRadius:'8px', border: modalMode === key ? `1.5px solid ${th.accent}` : bdCard,
+                  background: modalMode === key ? th.accentT : th.card,
+                  color: modalMode === key ? th.accent : th.muted,
+                  fontFamily:"'Archivo',sans-serif", fontWeight:600, fontSize:'11px', cursor:'pointer',
+                  letterSpacing:'0.02em', transition:'all 0.15s'
+                }}>
+                <div style={{ fontSize:'18px', marginBottom:'2px' }}>{m.btn}</div>
+                {m.label}
+              </button>
+            ))}
           </div>
-        )}
 
-        {/* ---------------- ABA AFINADOR ---------------- */}
-        {micState === 'granted' && activeTab === 'tuner' && (
-          <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 sm:p-6 scanlines">
-            <div className="flex justify-center mb-4">
-              <canvas ref={strobeCanvasRef} className="w-56 h-56 sm:w-64 sm:h-64" style={{ width: 240, height: 240 }} />
-            </div>
-
-            <div className="text-center mb-4">
-              <div className={`font-disp text-5xl font-bold ${accentClass}`}>
-                {display.silent ? '--' : `${display.note}${display.octave}`}
+          {/* ── Espectro ── */}
+          <div style={{ background: th.card, border: bdCard, borderRadius:'12px', padding:'14px', backgroundImage: th.scan }}>
+            <canvas ref={spectrumCanvasRef} style={{ width:'100%', height:'220px', display:'block' }} />
+            <div style={{ display:'flex', alignItems:'center', gap:'8px', marginTop:'8px', marginBottom:'10px' }}>
+              <span style={{ ...tMuted, fontSize:'10px', whiteSpace:'nowrap' }}>nível mic</span>
+              <div style={{ flex:1, height:'4px', background: th.border, borderRadius:'2px', overflow:'hidden' }}>
+                <div style={{ height:'100%', background:'#f59e0b', width:`${Math.min(100, liveLevel * 600)}%`, borderRadius:'2px', transition:'width 0.05s' }} />
               </div>
-              <div className="text-sm text-zinc-500 mt-1">{display.silent ? 'aguardando sinal...' : formatHz(display.freq)}</div>
             </div>
 
-            {/* medidor linear de cents */}
-            <div className="relative h-3 bg-zinc-800 rounded-full mb-2 overflow-hidden">
-              <div className="absolute left-1/2 top-0 w-px h-full bg-zinc-600" />
-              {!display.silent && (
-                <div
-                  className={`absolute top-0 h-full w-1.5 rounded-full ${inTune ? 'bg-emerald-400' : 'bg-amber-400'}`}
-                  style={{ left: `calc(${50 + Math.max(-50, Math.min(50, display.cents))}% - 3px)` }}
-                />
-              )}
-            </div>
-            <div className="flex justify-between text-xs text-zinc-600 mb-4">
-              <span>-50¢</span><span>0</span><span>+50¢</span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 text-center mb-4">
-              <div className="bg-zinc-800/60 rounded-md p-2">
-                <div className="text-xs text-zinc-500 uppercase tracking-wide">Cents</div>
-                <div className={`font-disp text-lg font-bold ${accentClass}`}>{display.silent ? '—' : `${display.cents >= 0 ? '+' : ''}${display.cents.toFixed(1)}`}</div>
-              </div>
-              <div className="bg-zinc-800/60 rounded-md p-2">
-                <div className="text-xs text-zinc-500 uppercase tracking-wide">Vírgulas (referência)</div>
-                <div className="text-xs text-zinc-300">
-                  {display.silent ? '—' : <>sint. {commaSyn >= 0 ? '+' : ''}{commaSyn.toFixed(2)} · pit. {commaPyth >= 0 ? '+' : ''}{commaPyth.toFixed(2)}</>}
+            {!armed && !capturing && (
+              <button onClick={startCapture}
+                style={{ width:'100%', padding:'13px', background:'#f59e0b', color:'#1c1917', fontFamily:"'Archivo',sans-serif", fontWeight:700, fontSize:'14px', borderRadius:'8px', border:'none', cursor:'pointer', letterSpacing:'0.04em' }}>
+                {MEASURE_MODES[modalMode]?.btn} Escutar — {MEASURE_MODES[modalMode]?.label}
+              </button>
+            )}
+            {armed && !capturing && (
+              <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+                <button onClick={cancelCapture}
+                  style={{ padding:'11px 14px', background: th.card, border: bdCard, borderRadius:'8px', color: th.muted, cursor:'pointer', fontSize:'12px' }}>
+                  ✕ cancelar
+                </button>
+                <div className="pulse" style={{ flex:1, textAlign:'center', color:'#f59e0b', fontSize:'12px', fontWeight:600, letterSpacing:'0.08em' }}>
+                  ● AGUARDANDO IMPACTO...
                 </div>
               </div>
-            </div>
-
-            <div className="flex items-center justify-between border-t border-zinc-800 pt-3 gap-3 flex-wrap">
-              <div className="flex items-center gap-2 text-xs text-zinc-400">
-                <span>A4 =</span>
-                <input
-                  type="number" value={a4} min={410} max={450}
-                  onChange={(e) => setA4(Number(e.target.value) || 440)}
-                  className="w-16 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-zinc-200"
-                />
-                <span>Hz</span>
-              </div>
-              <label className="flex items-center gap-2 text-xs text-zinc-400">
-                <input type="checkbox" checked={fixedTarget} onChange={(e) => setFixedTarget(e.target.checked)} className="accent-emerald-500" />
-                nota fixa
-              </label>
-              {fixedTarget && (
-                <div className="flex items-center gap-1 text-xs">
-                  <select value={targetNote} onChange={(e) => setTargetNote(Number(e.target.value))} className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5">
-                    {NOTE_NAMES.map((n, i) => <option key={n} value={i}>{n}</option>)}
-                  </select>
-                  <select value={targetOctave} onChange={(e) => setTargetOctave(Number(e.target.value))} className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5">
-                    {[1, 2, 3, 4, 5, 6].map((o) => <option key={o} value={o}>{o}</option>)}
-                  </select>
+            )}
+            {capturing && (
+              <div>
+                <div style={{ textAlign:'center', color:'#34d399', fontSize:'12px', fontWeight:600, marginBottom:'6px', letterSpacing:'0.06em' }}>
+                  capturando decaimento...
                 </div>
-              )}
-            </div>
-
-            <div className="flex items-center gap-3 border-t border-zinc-800 pt-3 mt-3">
-              <span className="text-xs text-zinc-400 shrink-0">Sensibilidade</span>
-              <input
-                type="range" min={0} max={100} value={sensitivity}
-                onChange={(e) => setSensitivity(Number(e.target.value))}
-                className="flex-1 accent-emerald-500"
-              />
-              <span className="text-xs text-zinc-500 w-8 text-right shrink-0">{sensitivity}</span>
-            </div>
-            <div className="flex items-center gap-3 border-t border-zinc-800 pt-2 mt-1">
-              <span className="text-xs text-zinc-400 shrink-0">Calibração</span>
-              <input
-                type="range" min={-50} max={50} value={calibCents}
-                onChange={(e) => setCalibCents(Number(e.target.value))}
-                className="flex-1 accent-amber-500"
-              />
-              <span className="text-xs text-amber-500 w-12 text-right shrink-0 font-mono">{calibCents > 0 ? '+' : ''}{calibCents}¢</span>
-            </div>
+                <div style={{ height:'4px', background: th.border, borderRadius:'2px', overflow:'hidden' }}>
+                  <div style={{ height:'100%', background:'#34d399', width:`${captureProgress * 100}%`, borderRadius:'2px', transition:'width 0.1s' }} />
+                </div>
+              </div>
+            )}
           </div>
-        )}
 
-        {/* ---------------- ABA ANÁLISE MODAL ---------------- */}
-        {micState === 'granted' && activeTab === 'modal' && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-1.5 mb-2">
-              {Object.entries(MEASURE_MODES).map(([key, m]) => (
-                <button key={key} onClick={() => { setModalMode(key); setPeaks([]); }}
-                  className={`py-2 rounded text-xs font-disp font-semibold transition ${modalMode === key ? 'bg-amber-500 text-zinc-950' : 'bg-zinc-800 text-zinc-400'}`}>
-                  {m.btn} {m.label}
-                </button>
-              ))}
-            </div>
-            <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 sm:p-6 scanlines">
-              <canvas ref={spectrumCanvasRef} className="w-full" style={{ height: 200 }} />
-
-              <div className="flex items-center gap-2 mt-2 mb-4">
-                <div className="text-xs text-zinc-500 w-16">nível mic</div>
-                <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                  <div className="h-full bg-zinc-500" style={{ width: `${Math.min(100, liveLevel * 600)}%` }} />
-                </div>
+          {/* ── Picos detectados ── */}
+          {peaks.length > 0 && (
+            <div style={{ background: th.card, border: bdCard, borderRadius:'12px', padding:'14px' }}>
+              <div className="font-arch" style={{ fontWeight:600, fontSize:'13px', marginBottom:'4px' }}>Picos detectados</div>
+              <div style={{ ...tMuted, fontSize:'10px', marginBottom:'12px', lineHeight:'1.5' }}>
+                Confirme e renomeie conforme sua identificação acústica.
               </div>
-
-              {!armed && !capturing && (
-                <button
-                  onClick={startListeningForTap}
-                  className="w-full flex items-center justify-center gap-2 py-3 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-disp font-semibold rounded-md text-sm"
-                >
-                  {MEASURE_MODES[modalMode]?.btn} Escutar — {MEASURE_MODES[modalMode]?.label}
-                </button>
-              )}
-              {armed && !capturing && (
-                <div className="flex items-center gap-3">
-                  <button onClick={cancelTap} className="px-3 py-3 bg-zinc-800 text-zinc-400 rounded-md text-sm flex items-center gap-1">cancelar</button>
-                  <div className="flex-1 text-center text-amber-400 text-sm font-disp pulse-slow">● AGUARDANDO BATIDA SECA...</div>
-                </div>
-              )}
-              {capturing && (
-                <div>
-                  <div className="text-center text-emerald-400 text-sm font-disp mb-1">capturando decaimento...</div>
-                  <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-emerald-400" style={{ width: `${captureProgress * 100}%` }} />
+              <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
+                {peaks.map(p => (
+                  <div key={p.id} style={{ display:'flex', alignItems:'center', gap:'8px', background: th.bg, borderRadius:'6px', padding:'8px 10px' }}>
+                    <span style={{ ...tAccent, fontWeight:700, fontSize:'13px', width:'90px', flexShrink:0 }}>{formatHz(p.freq)}</span>
+                    <span style={{ ...tMuted, fontSize:'10px', width:'48px', flexShrink:0 }}>{p.db.toFixed(0)} dB</span>
+                    <input value={p.label} onChange={e => updatePeakLabel(p.id, e.target.value)}
+                      style={{ flex:1, background: th.card, border: bdCard, borderRadius:'5px', padding:'5px 8px', fontSize:'11px', color: th.text }} />
                   </div>
-                </div>
-              )}
+                ))}
+              </div>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:'8px', marginTop:'12px', paddingTop:'10px', borderTop: bdCard }}>
+                <input list="inst-list" value={instrument} onChange={e => setInstrument(e.target.value)}
+                  placeholder="instrumento (ex: Violão 5)" style={{ flex:'1 1 140px', background: th.card, border: bdCard, borderRadius:'6px', padding:'8px 10px', fontSize:'11px', color: th.text }} />
+                <datalist id="inst-list">{instrumentNames.map(n => <option key={n} value={n}/>)}</datalist>
+                <input value={noteField} onChange={e => setNoteField(e.target.value)}
+                  placeholder="observação" style={{ flex:'2 1 180px', background: th.card, border: bdCard, borderRadius:'6px', padding:'8px 10px', fontSize:'11px', color: th.text }} />
+                <button onClick={saveMeasurement}
+                  style={{ padding:'8px 16px', background:'#34d399', color:'#0f172a', fontFamily:"'Archivo',sans-serif", fontWeight:700, fontSize:'12px', borderRadius:'6px', border:'none', cursor:'pointer' }}>
+                  💾 Salvar
+                </button>
+              </div>
             </div>
+          )}
 
-            {peaks.length > 0 && (
-              <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-                <h3 className="font-disp text-sm font-semibold text-zinc-300 mb-1">Picos detectados</h3>
-                <p className="text-xs text-zinc-500 mb-3">Ordem sugerida por frequência — confira e renomeie conforme sua identificação acústica (Chladni, comparação de amplitude, etc).</p>
-                <div className="space-y-2">
-                  {peaks.map((p) => (
-                    <div key={p.id} className="flex items-center gap-2 bg-zinc-800/60 rounded-md p-2">
-                      <div className="font-disp text-sm text-amber-400 w-20 shrink-0">{formatHz(p.freq)}</div>
-                      <div className="text-xs text-zinc-500 w-14 shrink-0">{p.db.toFixed(0)} dB</div>
-                      <input
-                        value={p.label}
-                        onChange={(e) => updatePeakLabel(p.id, e.target.value)}
-                        className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200"
-                      />
-                    </div>
-                  ))}
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2 mt-4 pt-3 border-t border-zinc-800">
-                  <input
-                    list="instrument-list"
-                    value={instrument}
-                    onChange={(e) => setInstrument(e.target.value)}
-                    placeholder="instrumento (ex: Violão 5)"
-                    className="flex-1 min-w-36 bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-200"
-                  />
-                  <datalist id="instrument-list">
-                    {instrumentNames.map((n) => <option key={n} value={n} />)}
-                  </datalist>
-                  <input
-                    value={noteField}
-                    onChange={(e) => setNoteField(e.target.value)}
-                    placeholder="observação (ex: antes da colagem do fundo)"
-                    className="flex-1 min-w-44 bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-200"
-                  />
-                  <button onClick={saveMeasurement} className="flex items-center gap-1 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 rounded-md text-xs font-disp font-semibold">
-                    salvar
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {storageReady && measurements.length > 0 && (
-              <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-                <h3 className="font-disp text-sm font-semibold text-zinc-300 mb-3">Histórico</h3>
-                <div className="space-y-2 max-h-80 overflow-y-auto">
-                  {measurements.map((m) => (
-                    <details key={m.id} className="bg-zinc-800/50 rounded-md">
-                      <summary className="cursor-pointer px-3 py-2 text-xs flex items-center justify-between">
-                        <div className="flex flex-col">
-                          <span className="text-zinc-200 font-disp">{m.instrument}</span>
-                          {m.serial && <span className="text-amber-600/70" style={{ fontSize: '10px', letterSpacing: '0.1em' }}>{m.serial}</span>}
-                        </div>
-                        <span className="text-zinc-500">{new Date(m.timestamp).toLocaleDateString('pt-BR')}</span>
-                      </summary>
-                      <div className="px-3 pb-3">
-                        {m.note && <div className="text-xs text-zinc-500 italic mb-2">{m.note}</div>}
-                        {m.peaks.map((p, i) => (
-                          <div key={i} className="text-xs text-zinc-400 flex justify-between">
-                            <span>{p.label}</span><span className="text-amber-400/80">{formatHz(p.freq)}</span>
-                          </div>
-                        ))}
-                        <div className="flex items-center gap-3 mt-3 pt-2 border-t border-zinc-700/50">
-                          <button
-                            onClick={() => generateCertificate(m)}
-                            className="flex items-center gap-1 px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 rounded text-xs font-disp font-semibold border border-amber-500/30"
-                          >
-                            ⬡ Gerar Certificado
-                          </button>
-                          <button onClick={() => deleteMeasurement(m.id)} className="flex items-center gap-1 text-xs text-rose-400 hover:text-rose-300">
-                            excluir
-                          </button>
-                        </div>
+          {/* ── Histórico ── */}
+          {storageReady && measurements.length > 0 && (
+            <div style={{ background: th.card, border: bdCard, borderRadius:'12px', padding:'14px' }}>
+              <div className="font-arch" style={{ fontWeight:600, fontSize:'13px', marginBottom:'10px' }}>Histórico</div>
+              <div style={{ display:'flex', flexDirection:'column', gap:'6px', maxHeight:'320px', overflowY:'auto' }}>
+                {measurements.map(m => (
+                  <details key={m.id} style={{ background: th.bg, borderRadius:'8px' }}>
+                    <summary style={{ padding:'9px 12px', cursor:'pointer', display:'flex', justifyContent:'space-between', alignItems:'center', listStyle:'none' }}>
+                      <div>
+                        <div className="font-arch" style={{ fontWeight:600, fontSize:'12px' }}>{m.instrument}</div>
+                        {m.serial && <div style={{ ...tMuted, fontSize:'9px', letterSpacing:'0.12em' }}>{m.serial}</div>}
                       </div>
-                    </details>
-                  ))}
-                </div>
+                      <span style={{ ...tMuted, fontSize:'10px' }}>{new Date(m.timestamp).toLocaleDateString('pt-BR')}</span>
+                    </summary>
+                    <div style={{ padding:'4px 12px 10px' }}>
+                      {m.note && <div style={{ ...tMuted, fontSize:'10px', fontStyle:'italic', marginBottom:'6px' }}>{m.note}</div>}
+                      {m.peaks.map((p, i) => (
+                        <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:'11px', padding:'2px 0', borderBottom:`1px solid ${th.border}` }}>
+                          <span style={{ color: th.muted }}>{p.label}</span>
+                          <span style={tAccent}>{formatHz(p.freq)}</span>
+                        </div>
+                      ))}
+                      <div style={{ display:'flex', gap:'10px', marginTop:'10px' }}>
+                        <button onClick={() => generateCertificate(m)}
+                          style={{ padding:'6px 14px', background: th.accentT, border:`1px solid ${th.accent}`, borderRadius:'6px', color: th.accent, fontFamily:"'Archivo',sans-serif", fontWeight:600, fontSize:'11px', cursor:'pointer' }}>
+                          ⬡ Gerar Certificado
+                        </button>
+                        <button onClick={() => deleteMeasurement(m.id)}
+                          style={{ background:'none', border:'none', color:'#f87171', fontSize:'11px', cursor:'pointer' }}>
+                          excluir
+                        </button>
+                      </div>
+                    </div>
+                  </details>
+                ))}
               </div>
-            )}
-          </div>
-        )}
-      </div>
+            </div>
+          )}
+
+        </div>
+      )}
     </div>
   );
 }
@@ -945,17 +611,16 @@ td:nth-child(2){color:#8a7060;font-family:'Lato',monospace}
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 
 </script>
-
 <script>
-  (function () {
-    try {
-      var src = document.getElementById('app-source').textContent;
-      var out = Babel.transform(src, { presets: [['react', { runtime: 'classic' }]] }).code;
-      eval(out);
-    } catch (err) {
-      document.body.innerHTML = '<pre style="color:#ff6b6b; white-space:pre-wrap; padding:20px; font-family:monospace;">ERRO: ' + err.message + '\n' + (err.stack || '') + '</pre>';
-    }
-  })();
+(function(){
+  try {
+    var src = document.getElementById('app-source').textContent;
+    var out = Babel.transform(src, { presets: [['react', { runtime: 'classic' }]] }).code;
+    eval(out);
+  } catch(err) {
+    document.body.innerHTML = '<pre style="color:#ff6b6b;padding:20px;font-family:monospace;white-space:pre-wrap;">ERRO: ' + err.message + '</pre>';
+  }
+})();
 </script>
 </body>
 </html>
