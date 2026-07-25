@@ -279,20 +279,26 @@ function App() {
     rings.forEach((ring, idx) => {
       if (!silent) ringAnglesRef.current[idx] += ring.h * cents * gain * dt * (Math.PI / 180);
       const angle = ringAnglesRef.current[idx];
+      const segAngle = (Math.PI * 2) / ring.teeth;
+      const thickness = size * 0.058; // espessura real das secções
+      const innerR = ring.r - thickness / 2;
+      const outerR = ring.r + thickness / 2;
       ctx.save();
       ctx.translate(cx, cy);
       ctx.rotate(angle);
-      ctx.strokeStyle = ring.col;
-      ctx.lineWidth = size * 0.019;
+      ctx.fillStyle = ring.col;
       ctx.shadowColor = ring.col;
-      ctx.shadowBlur = silent ? 0 : (inTune ? 16 : 6);
+      ctx.shadowBlur = silent ? 0 : (inTune ? 18 : 7);
       ctx.globalAlpha = silent ? 0.18 : (inTune ? 1.0 : 0.82);
       for (let i = 0; i < ring.teeth; i++) {
         if (i % 2 === 0) {
           const a0 = (i / ring.teeth) * Math.PI * 2;
+          const a1 = a0 + segAngle * 0.92; // gap mínimo entre segmentos
           ctx.beginPath();
-          ctx.arc(0, 0, ring.r, a0, a0 + (Math.PI * 2) / ring.teeth);
-          ctx.stroke();
+          ctx.arc(0, 0, outerR, a0, a1);
+          ctx.arc(0, 0, innerR, a1, a0, true);
+          ctx.closePath();
+          ctx.fill();
         }
       }
       ctx.restore();
@@ -609,7 +615,7 @@ td:nth-child(2){color:#8a7060;font-family:'Lato',monospace}
 .sig-line{border:none;border-top:1px solid #2a1f0f;margin-bottom:7px}
 .sig-name{font-weight:700;font-size:12px;letter-spacing:0.05em}
 .sig-role{font-size:10px;color:#8a7060}
-@media print{body{background:#f5f0e8!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;padding:0}.cert{box-shadow:none;border-radius:10px}.print-btn{display:none!important}}
+@media print{body{background:white!important;padding:0;min-height:0;height:auto}.cert{box-shadow:none;border-color:#6b4422}}
 .print-btn{display:block;margin:28px auto 0;padding:14px 36px;background:#2a1f0f;color:#f5f0e8;border:none;border-radius:8px;font-family:'Lato',sans-serif;font-size:13px;font-weight:700;letter-spacing:0.1em;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,0.25);text-transform:uppercase}
 .print-btn:hover{background:#3d2e1a}
 @media print{.print-btn{display:none!important}}
