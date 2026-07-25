@@ -28,7 +28,24 @@ const { useState, useRef, useEffect, useCallback } = React;
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const SYNTONIC_COMMA = 21.51; // cents
 const PYTHAGOREAN_COMMA = 23.46; // cents
-const DEFAULT_PEAK_LABELS = ['Helmholtz (A0)', 'T(1,1) — Tampo', 'T(1,1) — Fundo / Acoplado', 'T(2,1)', 'T(1,2)', 'T(3,1)', 'Modo 7'];
+const MEASURE_MODES = {
+  montado: {
+    label: 'Instrumento Montado', btn: '🎸',
+    fMin: 55, fMax: 1200,
+    labels: ['Helmholtz (A0) — T(1,1)₁','T(1,1)₂ — Tampo','T(1,1)₃ — Fundo Acoplado','T(2,1) — Dipolo Cruzado','T(1,2) — Dipolo Longitudinal','T(3,1) — Tripolo Cruzado','Modo 7'],
+  },
+  tampo: {
+    label: 'Tampo Livre', btn: '🪵',
+    fMin: 80, fMax: 900,
+    labels: ['(2,0) — Modo Cruz','(0,2) — Modo Anel','(1,1) — Torsão','(2,2) — Ring','(3,0)','Modo 6 livre','Modo 7 livre'],
+  },
+  fundo: {
+    label: 'Fundo Separado', btn: '🎼',
+    fMin: 80, fMax: 1000,
+    labels: ['Fundo (2,0)','Fundo (0,2)','Fundo (1,1)','Fundo (2,2)','Fundo (3,0)','Modo 6 fundo','Modo 7 fundo'],
+  },
+};
+const DEFAULT_PEAK_LABELS = MEASURE_MODES.montado.labels;
 
 function freqToMidiCents(freq, a4) {
   const midi = 69 + 12 * Math.log2(freq / a4);
@@ -119,6 +136,7 @@ function App() {
   const [display, setDisplay] = useState({ freq: 0, note: '--', octave: '', cents: 0, silent: true });
 
   // modal tab state
+  const [modalMode, setModalMode] = useState('montado');
   const [armed, setArmed] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [captureProgress, setCaptureProgress] = useState(0);
@@ -148,6 +166,8 @@ function App() {
   const sensitivityRef = useRef(50);
   const lastValidPitchRef = useRef(0);
   const silentRef = useRef(true);
+  const smoothedCentsRef = useRef(0);
+  const modalModeRef = useRef('montado');
   const ringAnglesRef = useRef([0, 0, 0]);
   const lastTsRef = useRef(0);
   const a4Ref = useRef(440);
@@ -164,6 +184,7 @@ function App() {
   useEffect(() => { sensitivityRef.current = sensitivity; }, [sensitivity]);
   useEffect(() => { targetFreqRef.current = noteToFreq(targetNote, targetOctave, a4); }, [targetNote, targetOctave, a4]);
   useEffect(() => { armedRef.current = armed; }, [armed]);
+  useEffect(() => { modalModeRef.current = modalMode; }, [modalMode]);
   useEffect(() => { capturingRef.current = capturing; }, [capturing]);
 
   // ---- Carregar histórico de medições (localStorage) ----
@@ -235,45 +256,40 @@ function App() {
     if (!canvas) return;
     const dpr = window.devicePixelRatio || 1;
     const cssSize = canvas.clientWidth || 280;
-    if (canvas.width !== cssSize * dpr) {
-      canvas.width = cssSize * dpr;
-      canvas.height = cssSize * dpr;
-    }
+    if (canvas.width !== cssSize * dpr) { canvas.width = cssSize * dpr; canvas.height = cssSize * dpr; }
     const ctx = canvas.getContext('2d');
     const size = cssSize;
     ctx.save();
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, size, size);
-
     const dt = lastTsRef.current ? Math.min((ts - lastTsRef.current) / 1000, 0.1) : 0;
     lastTsRef.current = ts;
-
-    const cents = silentRef.current ? 0 : centsRef.current;
-    const gain = 0.9; // graus por segundo por cent, por harmônico
-    const inTune = !silentRef.current && Math.abs(cents) < 1.5;
-    const accent = inTune ? '#34d399' : (Math.abs(cents) < 5 ? '#a3e635' : '#fbbf24');
-
+    const rawCents = silentRef.current ? 0 : centsRef.current;
+    smoothedCentsRef.current = smoothedCentsRef.current * 0.85 + rawCents * 0.15;
+    const cents = smoothedCentsRef.current;
+    const gain = 0.32;
+    const inTune = !silentRef.current && Math.abs(rawCents) < 1.5;
+    const silent = silentRef.current;
     const cx = size / 2, cy = size / 2;
     const rings = [
-      { r: size * 0.46, teeth: 36, h: 1 },
-      { r: size * 0.34, teeth: 24, h: 2 },
-      { r: size * 0.22, teeth: 16, h: 3 },
+      { r: size * 0.46, teeth: 36, h: 1, col: '#22d3ee', glow: '#0891b2' },
+      { r: size * 0.34, teeth: 24, h: 2, col: '#f59e0b', glow: '#b45309' },
+      { r: size * 0.22, teeth: 16, h: 3, col: '#f87171', glow: '#dc2626' },
     ];
-
     rings.forEach((ring, idx) => {
-      if (!silentRef.current) ringAnglesRef.current[idx] += ring.h * cents * gain * dt * (Math.PI / 180);
+      if (!silent) ringAnglesRef.current[idx] += ring.h * cents * gain * dt * (Math.PI / 180);
       const angle = ringAnglesRef.current[idx];
       ctx.save();
       ctx.translate(cx, cy);
       ctx.rotate(angle);
-      ctx.strokeStyle = accent;
-      ctx.lineWidth = size * 0.018;
-      ctx.shadowColor = accent;
-      ctx.shadowBlur = silentRef.current ? 0 : 8;
-      ctx.globalAlpha = silentRef.current ? 0.25 : 0.95;
+      ctx.strokeStyle = ring.col;
+      ctx.lineWidth = size * 0.019;
+      ctx.shadowColor = ring.col;
+      ctx.shadowBlur = silent ? 0 : (inTune ? 16 : 6);
+      ctx.globalAlpha = silent ? 0.18 : (inTune ? 1.0 : 0.82);
       for (let i = 0; i < ring.teeth; i++) {
-        const a0 = (i / ring.teeth) * Math.PI * 2;
         if (i % 2 === 0) {
+          const a0 = (i / ring.teeth) * Math.PI * 2;
           ctx.beginPath();
           ctx.arc(0, 0, ring.r, a0, a0 + (Math.PI * 2) / ring.teeth);
           ctx.stroke();
@@ -281,18 +297,23 @@ function App() {
       }
       ctx.restore();
     });
-
-    // marcador fixo de referência (topo)
+    const dotCol = silent ? '#52525b' : inTune ? '#34d399' : Math.abs(rawCents) < 8 ? '#fbbf24' : '#f87171';
     ctx.save();
     ctx.translate(cx, cy);
-    ctx.strokeStyle = '#71717a';
-    ctx.lineWidth = 1.5;
+    ctx.shadowColor = dotCol; ctx.shadowBlur = silent ? 0 : 10;
+    ctx.beginPath(); ctx.arc(0, 0, size * 0.038, 0, Math.PI * 2);
+    ctx.fillStyle = dotCol; ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.strokeStyle = inTune ? '#34d399' : '#52525b';
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = inTune ? '#34d399' : 'transparent';
+    ctx.shadowBlur = inTune ? 8 : 0;
     ctx.beginPath();
-    ctx.moveTo(0, -size * 0.49);
-    ctx.lineTo(0, -size * 0.5);
+    ctx.moveTo(0, -size * 0.48); ctx.lineTo(0, -size * 0.52);
     ctx.stroke();
     ctx.restore();
-
     ctx.restore();
   }
 
@@ -439,8 +460,9 @@ function App() {
           armedRef.current = false;
           setCapturing(false);
           setArmed(false);
-          const found = findPeaks(maxHoldRef.current, audioCtxRef.current.sampleRate, analyser.fftSize, { maxPeaks: 7 });
-          const labeled = found.map((p, idx) => ({ ...p, label: DEFAULT_PEAK_LABELS[idx] || `Modo ${idx + 1}`, id: uid() }));
+          const modeConf = MEASURE_MODES[modalModeRef.current] || MEASURE_MODES.montado;
+          const found = findPeaks(maxHoldRef.current, audioCtxRef.current.sampleRate, analyser.fftSize, { maxPeaks: 7, fMin: modeConf.fMin, fMax: modeConf.fMax });
+          const labeled = found.map((p, idx) => ({ ...p, label: modeConf.labels[idx] || `Modo ${idx + 1}`, id: uid() }));
           setPeaks(labeled);
           frozenSpectrumRef.current = maxHoldRef.current.slice();
           freezeUntilRef.current = ts + 3500;
@@ -549,8 +571,8 @@ function App() {
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&family=Playfair+Display:wght@600&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#ddd8ce;font-family:'Lato',sans-serif;color:#2a1f0f;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:12px 8px 24px;min-height:100vh}
-.cert{background:#f5f0e8;border:1.5px solid #2a1f0f;border-radius:8px;max-width:680px;width:100%;padding:16px 24px;box-shadow:0 4px 24px rgba(0,0,0,0.18)}
+body{background:#f5f0e8;font-family:'Lato',sans-serif;color:#2a1f0f;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:12px 8px 24px;min-height:100vh}
+.cert{background:#f5f0e8;border:2px solid #6b4422;border-radius:14px;max-width:680px;width:100%;padding:22px 30px;box-shadow:0 4px 20px rgba(0,0,0,0.12)}
 .header{display:flex;align-items:center;gap:16px;margin-bottom:8px}
 .logo-img{width:100px;flex-shrink:0;border-radius:8px;display:block}
 .header-text{flex:1}
@@ -587,7 +609,7 @@ td:nth-child(2){color:#8a7060;font-family:'Lato',monospace}
 .sig-line{border:none;border-top:1px solid #2a1f0f;margin-bottom:7px}
 .sig-name{font-weight:700;font-size:12px;letter-spacing:0.05em}
 .sig-role{font-size:10px;color:#8a7060}
-@media print{body{background:white;padding:0}.cert{box-shadow:none;border-radius:0;max-width:100%;padding:0 8mm}.print-btn{display:none!important}}
+@media print{body{background:#f5f0e8!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;padding:0}.cert{box-shadow:none;border-radius:10px}.print-btn{display:none!important}}
 .print-btn{display:block;margin:28px auto 0;padding:14px 36px;background:#2a1f0f;color:#f5f0e8;border:none;border-radius:8px;font-family:'Lato',sans-serif;font-size:13px;font-weight:700;letter-spacing:0.1em;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,0.25);text-transform:uppercase}
 .print-btn:hover{background:#3d2e1a}
 @media print{.print-btn{display:none!important}}
@@ -771,6 +793,14 @@ td:nth-child(2){color:#8a7060;font-family:'Lato',monospace}
         {/* ---------------- ABA ANÁLISE MODAL ---------------- */}
         {micState === 'granted' && activeTab === 'modal' && (
           <div className="space-y-4">
+            <div className="grid grid-cols-3 gap-1.5 mb-2">
+              {Object.entries(MEASURE_MODES).map(([key, m]) => (
+                <button key={key} onClick={() => { setModalMode(key); setPeaks([]); }}
+                  className={`py-2 rounded text-xs font-disp font-semibold transition ${modalMode === key ? 'bg-amber-500 text-zinc-950' : 'bg-zinc-800 text-zinc-400'}`}>
+                  {m.btn} {m.label}
+                </button>
+              ))}
+            </div>
             <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 sm:p-6 scanlines">
               <canvas ref={spectrumCanvasRef} className="w-full" style={{ height: 200 }} />
 
@@ -786,7 +816,7 @@ td:nth-child(2){color:#8a7060;font-family:'Lato',monospace}
                   onClick={startListeningForTap}
                   className="w-full flex items-center justify-center gap-2 py-3 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-disp font-semibold rounded-md text-sm"
                 >
-                  Escutar batida no tampo
+                  {MEASURE_MODES[modalMode]?.btn} Escutar — {MEASURE_MODES[modalMode]?.label}
                 </button>
               )}
               {armed && !capturing && (
