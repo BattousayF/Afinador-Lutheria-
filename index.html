@@ -41,7 +41,7 @@ function formatHz(v) { return v >= 1000 ? `${(v / 1000).toFixed(3)} kHz` : `${v.
 function uid() { return Math.random().toString(36).slice(2, 10); }
 
 function findPeaks(magDb, sampleRate, fftSize, opts = {}) {
-  const { fMin = 55, fMax = 1200, maxPeaks = 7, minProminence = 7 } = opts;
+  const { fMin = 55, fMax = 1200, maxPeaks = 7, minProminence = 5 } = opts;
   const binHz = sampleRate / fftSize;
   const iMin = Math.max(1, Math.floor(fMin / binHz));
   const iMax = Math.min(magDb.length - 2, Math.ceil(fMax / binHz));
