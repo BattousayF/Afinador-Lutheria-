@@ -88,6 +88,7 @@ function App() {
 
   // ── Análise modal ─────────────────────────────────────────────────────────
   const [modalMode,     setModalMode]     = useState('montado');
+  const [certUrl,       setCertUrl]       = useState(null);
   const [armed,         setArmed]         = useState(false);
   const [capturing,     setCapturing]     = useState(false);
   const [captureProgress, setCaptureProgress] = useState(0);
@@ -278,7 +279,15 @@ function persistMeasurements(next) {
           frozenSpectrumRef.current = maxHoldRef.current.slice();
           freezeUntilRef.current    = ts + 3500;
           drawSpectrum(maxHoldRef.current, labeled, true);
-          if (spectrumCanvasRef.current) frozenImageRef.current = spectrumCanvasRef.current.toDataURL('image/jpeg', 0.88);
+          if (spectrumCanvasRef.current) {
+          const src = spectrumCanvasRef.current;
+          const maxW = 520;
+          const scale = Math.min(1, maxW / src.width);
+          const tmp = document.createElement('canvas');
+          tmp.width = src.width * scale; tmp.height = src.height * scale;
+          tmp.getContext('2d').drawImage(src, 0, 0, tmp.width, tmp.height);
+          frozenImageRef.current = tmp.toDataURL('image/jpeg', 0.75);
+        }
         } else { drawSpectrum(maxHoldRef.current, [], true); }
       } else if (frozenSpectrumRef.current && ts < freezeUntilRef.current) {
         drawSpectrum(frozenSpectrumRef.current, peaks, true);
@@ -393,7 +402,7 @@ td:nth-child(2){color:#8a7060;font-family:'Lato',monospace}
 .sig-line{border:none;border-top:1px solid #2a1f0f;margin-bottom:7px}
 .sig-name{font-weight:700;font-size:12px;letter-spacing:0.05em}
 .sig-role{font-size:10px;color:#8a7060}
-@media print{body{background:white!important;padding:0;min-height:0;height:auto}.cert{box-shadow:none;border-color:#6b4422}}
+@media print{body{background:white!important;padding:0;min-height:0;height:auto}.cert{box-shadow:none;border-color:#6b4422}.close-btn{display:none!important}}
 .print-btn{display:block;margin:28px auto 0;padding:14px 36px;background:#2a1f0f;color:#f5f0e8;border:none;border-radius:8px;font-family:'Lato',sans-serif;font-size:13px;font-weight:700;letter-spacing:0.1em;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,0.25);text-transform:uppercase}
 .print-btn:hover{background:#3d2e1a}
 @media print{.print-btn{display:none!important}}
@@ -425,8 +434,9 @@ td:nth-child(2){color:#8a7060;font-family:'Lato',monospace}
   <button class="print-btn" onclick="window.print()">🖨 Imprimir / Salvar PDF</button>
 </body>
 </html>`;
-    const w = window.open('', '_blank');
-    if (w) { w.document.write(html); w.document.close(); }
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    setCertUrl(url);
   }
 
   const instrumentNames = Array.from(new Set(measurements.map(m => m.instrument))).slice(0, 12);
@@ -609,6 +619,27 @@ td:nth-child(2){color:#8a7060;font-family:'Lato',monospace}
             </div>
           )}
 
+        </div>
+      )}
+    </div>
+
+      {/* ── Overlay do certificado ── */}
+      {certUrl && (
+        <div style={{ position:'fixed', inset:0, zIndex:1000, background:'#f5f0e8', display:'flex', flexDirection:'column' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:'10px', padding:'10px 16px', background:'#2a1f0f', flexShrink:0 }}>
+            <button
+              onClick={() => { URL.revokeObjectURL(certUrl); setCertUrl(null); }}
+              style={{ background:'rgba(255,255,255,0.15)', border:'none', borderRadius:'6px', color:'#f5f0e8', padding:'8px 14px', fontFamily:"'Lato',sans-serif", fontWeight:700, fontSize:'13px', cursor:'pointer', display:'flex', alignItems:'center', gap:'6px' }}>
+              ← Voltar
+            </button>
+            <span style={{ flex:1, color:'#c8b89a', fontSize:'11px', letterSpacing:'0.1em', textAlign:'center', textTransform:'uppercase' }}>Certificado</span>
+            <button
+              onClick={() => { const f = document.getElementById('certFrame'); if(f) f.contentWindow.print(); }}
+              style={{ background:'#f59e0b', border:'none', borderRadius:'6px', color:'#1c1917', padding:'8px 14px', fontFamily:"'Lato',sans-serif", fontWeight:700, fontSize:'13px', cursor:'pointer' }}>
+              🖨 Imprimir
+            </button>
+          </div>
+          <iframe id="certFrame" src={certUrl} style={{ flex:1, border:'none', width:'100%' }} />
         </div>
       )}
     </div>
