@@ -64,14 +64,15 @@ function findPeaks(magDb, sampleRate, fftSize, opts = {}) {
       }
     }
   }
-  candidates.sort((a, b) => b.db - a.db);
+  // Ordena por FREQUÊNCIA — garante a seleção na ordem natural dos modos
+  candidates.sort((a, b) => a.freq - b.freq);
   const selected = [];
   const minGapHz = 25; // separação mínima entre picos selecionados
   for (const c of candidates) {
     if (selected.length >= maxPeaks) break;
     if (selected.every(s => Math.abs(s.freq - c.freq) > minGapHz)) selected.push(c);
   }
-  selected.sort((a, b) => a.freq - b.freq);
+  // já em ordem crescente de frequência
   return selected;
 }
 
