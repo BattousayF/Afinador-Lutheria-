@@ -41,38 +41,30 @@ function formatHz(v) { return v >= 1000 ? `${(v / 1000).toFixed(3)} kHz` : `${v.
 function uid() { return Math.random().toString(36).slice(2, 10); }
 
 function findPeaks(magDb, sampleRate, fftSize, opts = {}) {
-  const { fMin = 55, fMax = 1200, maxPeaks = 7, minProminence = 5 } = opts;
+  const { fMin = 55, fMax = 1200, maxPeaks = 7 } = opts;
   const binHz = sampleRate / fftSize;
   const iMin = Math.max(1, Math.floor(fMin / binHz));
   const iMax = Math.min(magDb.length - 2, Math.ceil(fMax / binHz));
-  const winBins = Math.max(8, Math.round(22 / binHz)); // ~22 Hz de janela de cada lado
 
   const candidates = [];
   for (let i = iMin; i <= iMax; i++) {
     if (magDb[i] > magDb[i - 1] && magDb[i] > magDb[i + 1] && magDb[i] > -78) {
-      // Interpolação parabólica sub-bin
+      // Interpolação parabólica sub-bin — resolve quantização FFT (~5.86 Hz/bin)
       const y1 = magDb[i - 1], y2 = magDb[i], y3 = magDb[i + 1];
       const denom = y1 - 2 * y2 + y3;
       const offset = denom !== 0 ? 0.5 * (y1 - y3) / denom : 0;
-      // Filtro de proeminência: pico precisa sobressair do vale vizinho em AMBOS os lados
-      let leftMin = y2, rightMin = y2;
-      for (let j = Math.max(iMin, i - winBins); j < i; j++) leftMin = Math.min(leftMin, magDb[j]);
-      for (let j = i + 1; j <= Math.min(iMax, i + winBins); j++) rightMin = Math.min(rightMin, magDb[j]);
-      const prominence = y2 - Math.max(leftMin, rightMin);
-      if (prominence >= minProminence) {
-        candidates.push({ freq: (i + offset) * binHz, db: y2, prominence });
-      }
+      candidates.push({ freq: (i + offset) * binHz, db: y2 });
     }
   }
-  // Ordena por FREQUÊNCIA — garante a seleção na ordem natural dos modos
-  candidates.sort((a, b) => a.freq - b.freq);
+  // Ordena por amplitude (mais forte primeiro) — modos reais são sempre mais fortes que ombros
+  candidates.sort((a, b) => b.db - a.db);
   const selected = [];
-  const minGapHz = 25; // separação mínima entre picos selecionados
+  const minGapHz = 25; // gap suficiente pra rejeitar ombros (< 25 Hz de separação)
   for (const c of candidates) {
     if (selected.length >= maxPeaks) break;
     if (selected.every(s => Math.abs(s.freq - c.freq) > minGapHz)) selected.push(c);
   }
-  // já em ordem crescente de frequência
+  selected.sort((a, b) => a.freq - b.freq);
   return selected;
 }
 
