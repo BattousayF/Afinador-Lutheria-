@@ -41,25 +41,35 @@ function formatHz(v) { return v >= 1000 ? `${(v / 1000).toFixed(3)} kHz` : `${v.
 function uid() { return Math.random().toString(36).slice(2, 10); }
 
 function findPeaks(magDb, sampleRate, fftSize, opts = {}) {
-  const { fMin = 55, fMax = 1200, maxPeaks = 6 } = opts;
+  const { fMin = 55, fMax = 1200, maxPeaks = 7, minProminence = 7 } = opts;
   const binHz = sampleRate / fftSize;
   const iMin = Math.max(1, Math.floor(fMin / binHz));
   const iMax = Math.min(magDb.length - 2, Math.ceil(fMax / binHz));
+  const winBins = Math.max(8, Math.round(22 / binHz)); // ~22 Hz de janela de cada lado
+
   const candidates = [];
   for (let i = iMin; i <= iMax; i++) {
-    if (magDb[i] > magDb[i - 1] && magDb[i] > magDb[i + 1] && magDb[i] > -85) {
-      // Interpolação parabólica sub-bin — resolve quantização FFT (~5.86 Hz/bin)
+    if (magDb[i] > magDb[i - 1] && magDb[i] > magDb[i + 1] && magDb[i] > -78) {
+      // Interpolação parabólica sub-bin
       const y1 = magDb[i - 1], y2 = magDb[i], y3 = magDb[i + 1];
       const denom = y1 - 2 * y2 + y3;
       const offset = denom !== 0 ? 0.5 * (y1 - y3) / denom : 0;
-      candidates.push({ freq: (i + offset) * binHz, db: y2 });
+      // Filtro de proeminência: pico precisa sobressair do vale vizinho em AMBOS os lados
+      let leftMin = y2, rightMin = y2;
+      for (let j = Math.max(iMin, i - winBins); j < i; j++) leftMin = Math.min(leftMin, magDb[j]);
+      for (let j = i + 1; j <= Math.min(iMax, i + winBins); j++) rightMin = Math.min(rightMin, magDb[j]);
+      const prominence = y2 - Math.max(leftMin, rightMin);
+      if (prominence >= minProminence) {
+        candidates.push({ freq: (i + offset) * binHz, db: y2, prominence });
+      }
     }
   }
   candidates.sort((a, b) => b.db - a.db);
   const selected = [];
+  const minGapHz = 25; // separação mínima entre picos selecionados
   for (const c of candidates) {
     if (selected.length >= maxPeaks) break;
-    if (selected.every((s) => Math.abs(s.freq - c.freq) > 14)) selected.push(c);
+    if (selected.every(s => Math.abs(s.freq - c.freq) > minGapHz)) selected.push(c);
   }
   selected.sort((a, b) => a.freq - b.freq);
   return selected;
@@ -339,7 +349,7 @@ function generateCertificate(m) {
       </div>`;
     }
     const dateStr = new Date(m.timestamp).toLocaleString('pt-BR');
-    const certPeaks = m.peaks.slice(0, 5);
+    const certPeaks = m.peaks.slice(0, 6);
     const peaksRows = certPeaks.map(p => {
       return `<tr><td>${p.freq.toFixed(1)} Hz</td><td>${p.db.toFixed(0)} dB</td><td>${p.label}</td></tr>`;
     }).join('');
@@ -375,10 +385,10 @@ hr{border:none;border-top:1px solid #c8b89a;margin:7px 0}
 .st-dot{position:absolute;top:-4px;width:18px;height:18px;border-radius:50%;background:#2a1f0f;border:3px solid #f5f0e8;transform:translateX(-50%);box-shadow:0 1px 4px rgba(0,0,0,0.25)}
 .st-labs{display:flex;justify-content:space-between;font-size:9px;color:#8a7060}
 .st-note{font-size:8.5px;color:#8a7060;margin-top:4px;font-style:italic}
-table{width:100%;border-collapse:collapse;margin-bottom:7px;font-size:9.5px}
+table{width:100%;border-collapse:collapse;margin-bottom:6px;font-size:9px}
 thead tr{background:#2a1f0f}
-th{color:#f5f0e8;padding:4px 7px;text-align:left;font-size:8px;letter-spacing:0.08em;text-transform:uppercase;font-weight:700}
-td{padding:3px 7px;border-bottom:1px solid #d8d0c0;color:#2a1f0f;vertical-align:middle}
+th{color:#f5f0e8;padding:3px 7px;text-align:left;font-size:8px;letter-spacing:0.08em;text-transform:uppercase;font-weight:700}
+td{padding:2px 7px;border-bottom:1px solid #d8d0c0;color:#2a1f0f;vertical-align:middle}
 tr:last-child td{border-bottom:none}
 tr:nth-child(even) td{background:rgba(0,0,0,0.025)}
 td:first-child{font-weight:700;color:#5a3010;font-family:'Lato',monospace}
