@@ -60,7 +60,7 @@ function getModeType(label) {
     if (l.includes('t(3,1)')) return 'tripolo cruzado';
     return 'modo superior';
   }
-function generateCertificate(m) {
+function generateCertificate(m, setCertUrl) {
     const tampo = m.peaks.find(p => { const l = (p.label||'').toLowerCase(); return l.includes('tampo')||l.includes('t(1,1)2')||l.includes('t(1,1)\u2082'); }) || m.peaks[1];
     const fundo = m.peaks.find(p => { const l = (p.label||'').toLowerCase(); return l.includes('fundo')||l.includes('acoplado')||l.includes('t(1,1)3')||l.includes('t(1,1)\u2083'); }) || m.peaks[2];
     let semitoneBlock = '';
@@ -408,7 +408,7 @@ function App() {
                         </div>
                       ))}
                       <div style={{display:'flex',gap:'10px',marginTop:'10px'}}>
-                        <button onClick={()=>generateCertificate(m)} style={{padding:'6px 14px',background:th.accentT,border:'1px solid '+th.accent,borderRadius:'6px',color:th.accent,fontFamily:"'Archivo',sans-serif",fontWeight:600,fontSize:'11px',cursor:'pointer'}}>Gerar Certificado</button>
+                        <button onClick={()=>generateCertificate(m, setCertUrl)} style={{padding:'6px 14px',background:th.accentT,border:'1px solid '+th.accent,borderRadius:'6px',color:th.accent,fontFamily:"'Archivo',sans-serif",fontWeight:600,fontSize:'11px',cursor:'pointer'}}>Gerar Certificado</button>
                         <button onClick={()=>deleteMeasurement(m.id)} style={{background:'none',border:'none',color:'#f87171',fontSize:'11px',cursor:'pointer'}}>excluir</button>
                       </div>
                     </div>
