@@ -3,314 +3,52 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
-<title>PAIZINHO // Análise Modal</title>
+<title>PAIZINHO // Analise Modal</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<style>
-  html,body { margin:0; background:#09090b; }
-</style>
+<style>html,body{margin:0;background:#09090b;}</style>
 </head>
 <body>
 <div id="root"></div>
 <script type="text/jsx-source" id="app-source">
-
 const { useState, useRef, useEffect, useCallback } = React;
-
 const MEASURE_MODES = {
-  montado: {
-    label: 'Instrumento Montado', btn: '🎸',
-    fMin: 55, fMax: 1200,
-    labels: ['Helmholtz (A0) — T(1,1)₁','T(1,1)₂ — Tampo','T(1,1)₃ — Fundo Acoplado','T(2,1) — Dipolo Cruzado','T(1,2) — Dipolo Longitudinal','T(3,1) — Tripolo Cruzado','Modo 7'],
-  },
-  tampo: {
-    label: 'Tampo Livre', btn: '🪵',
-    fMin: 80, fMax: 900,
-    labels: ['(2,0) — Modo Cruz','(0,2) — Modo Anel','(1,1) — Torsão','(2,2) — Ring','(3,0)','Modo 6 livre','Modo 7 livre'],
-  },
-  fundo: {
-    label: 'Fundo Separado', btn: '🎼',
-    fMin: 80, fMax: 1000,
-    labels: ['Fundo (2,0)','Fundo (0,2)','Fundo (1,1)','Fundo (2,2)','Fundo (3,0)','Modo 6 fundo','Modo 7 fundo'],
-  },
+  montado:{label:'Instrumento Montado',btn:'🎸',fMin:55,fMax:1200,labels:['Helmholtz (A0) - T(1,1)1','T(1,1)2 - Tampo','T(1,1)3 - Fundo Acoplado','T(2,1) - Dipolo Cruzado','T(1,2) - Dipolo Longitudinal','T(3,1) - Tripolo Cruzado','Modo 7']},
+  tampo:{label:'Tampo Livre',btn:'🪵',fMin:80,fMax:900,labels:['(2,0) - Modo Cruz','(0,2) - Modo Anel','(1,1) - Torsao','(2,2) - Ring','(3,0)','Modo 6 livre','Modo 7 livre']},
+  fundo:{label:'Fundo Separado',btn:'🎼',fMin:80,fMax:1000,labels:['Fundo (2,0)','Fundo (0,2)','Fundo (1,1)','Fundo (2,2)','Fundo (3,0)','Modo 6 fundo','Modo 7 fundo']},
 };
-const DEFAULT_PEAK_LABELS = MEASURE_MODES.montado.labels;
-
-function formatHz(v) { return v >= 1000 ? `${(v / 1000).toFixed(3)} kHz` : `${v.toFixed(1)} Hz`; }
-function uid() { return Math.random().toString(36).slice(2, 10); }
-
-function findPeaks(magDb, sampleRate, fftSize, opts = {}) {
-  const { fMin = 55, fMax = 1200, maxPeaks = 6 } = opts;
-  const binHz = sampleRate / fftSize;
-  const iMin = Math.max(1, Math.floor(fMin / binHz));
-  const iMax = Math.min(magDb.length - 2, Math.ceil(fMax / binHz));
-  const candidates = [];
-  for (let i = iMin; i <= iMax; i++) {
-    if (magDb[i] > magDb[i - 1] && magDb[i] > magDb[i + 1] && magDb[i] > -85) {
-      // Interpolação parabólica sub-bin — resolve quantização FFT (~5.86 Hz/bin)
-      const y1 = magDb[i - 1], y2 = magDb[i], y3 = magDb[i + 1];
-      const denom = y1 - 2 * y2 + y3;
-      const offset = denom !== 0 ? 0.5 * (y1 - y3) / denom : 0;
-      candidates.push({ freq: (i + offset) * binHz, db: y2 });
+function formatHz(v){return v>=1000?(v/1000).toFixed(3)+' kHz':v.toFixed(1)+' Hz';}
+function uid(){return Math.random().toString(36).slice(2,10);}
+function findPeaks(magDb, sampleRate, fftSize, opts) {
+  if (!opts) opts = {};
+  var fMin = opts.fMin !== undefined ? opts.fMin : 55;
+  var fMax = opts.fMax !== undefined ? opts.fMax : 1200;
+  var maxPeaks = opts.maxPeaks !== undefined ? opts.maxPeaks : 7;
+  var binHz = sampleRate / fftSize;
+  var iMin = Math.max(1, Math.floor(fMin / binHz));
+  var iMax = Math.min(magDb.length - 2, Math.ceil(fMax / binHz));
+  var candidates = [];
+  for (var i = iMin; i <= iMax; i++) {
+    if (magDb[i] > magDb[i-1] && magDb[i] > magDb[i+1] && magDb[i] > -80) {
+      var y1=magDb[i-1], y2=magDb[i], y3=magDb[i+1];
+      var denom=y1-2*y2+y3;
+      var offset=denom!==0?0.5*(y1-y3)/denom:0;
+      candidates.push({freq:(i+offset)*binHz,db:y2});
     }
   }
-  candidates.sort((a, b) => b.db - a.db);
-  const selected = [];
-  for (const c of candidates) {
-    if (selected.length >= maxPeaks) break;
-    if (selected.every((s) => Math.abs(s.freq - c.freq) > 14)) selected.push(c);
+  candidates.sort(function(a,b){return b.db-a.db;});
+  var selected=[]; var minGapHz=12;
+  for (var k=0;k<candidates.length;k++){
+    var c=candidates[k]; if(selected.length>=maxPeaks)break;
+    var ok=true;
+    for(var j=0;j<selected.length;j++){if(Math.abs(selected[j].freq-c.freq)<=minGapHz){ok=false;break;}}
+    if(ok)selected.push(c);
   }
-  selected.sort((a, b) => a.freq - b.freq);
+  selected.sort(function(a,b){return a.freq-b.freq;});
   return selected;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-function App() {
-  // ── Tema ──────────────────────────────────────────────────────────────────
-  const [dark, setDark] = useState(true);
-  const th = {
-    bg:      dark ? '#09090b' : '#faf8f5',
-    card:    dark ? '#18181b' : '#ffffff',
-    border:  dark ? '#27272a' : '#e2ddd8',
-    text:    dark ? '#f4f4f5' : '#1c1917',
-    muted:   dark ? '#71717a' : '#78716c',
-    accent:  '#f59e0b',
-    accentT: dark ? 'rgba(245,158,11,0.15)' : 'rgba(245,158,11,0.12)',
-    scan:    dark ? 'repeating-linear-gradient(0deg,rgba(255,255,255,0.015) 0,rgba(255,255,255,0.015) 1px,transparent 1px,transparent 3px)' : 'none',
-  };
-
-  // ── Mic ───────────────────────────────────────────────────────────────────
-  const [micState, setMicState] = useState('idle');
-
-  // ── Análise modal ─────────────────────────────────────────────────────────
-  const [modalMode,     setModalMode]     = useState('montado');
-  const [armed,         setArmed]         = useState(false);
-  const [capturing,     setCapturing]     = useState(false);
-  const [captureProgress, setCaptureProgress] = useState(0);
-  const [peaks,         setPeaks]         = useState([]);
-  const [instrument,    setInstrument]    = useState('');
-  const [noteField,     setNoteField]     = useState('');
-  const [measurements,  setMeasurements]  = useState([]);
-  const [storageReady,  setStorageReady]  = useState(false);
-  const [liveLevel,     setLiveLevel]     = useState(0);
-
-  // ── Refs ──────────────────────────────────────────────────────────────────
-  const audioCtxRef        = useRef(null);
-  const streamRef          = useRef(null);
-  const modalAnalyserRef   = useRef(null);
-  const modalTimeBufRef    = useRef(null);
-  const freqBufRef         = useRef(null);
-  const maxHoldRef         = useRef(null);
-  const frozenSpectrumRef  = useRef(null);
-  const freezeUntilRef     = useRef(0);
-  const frozenImageRef     = useRef(null);
-  const captureStartRef    = useRef(0);
-  const rafRef             = useRef(null);
-  const armedRef           = useRef(false);
-  const capturingRef       = useRef(false);
-  const modalModeRef       = useRef('montado');
-  const spectrumCanvasRef  = useRef(null);
-
-  useEffect(() => { armedRef.current    = armed;     }, [armed]);
-  useEffect(() => { capturingRef.current = capturing; }, [capturing]);
-  useEffect(() => { modalModeRef.current = modalMode; }, [modalMode]);
-
-  // ── Carregar histórico ────────────────────────────────────────────────────
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem('paizinho-modal-measurements');
-      if (raw) setMeasurements(JSON.parse(raw));
-    } catch (e) {}
-    finally { setStorageReady(true); }
-  }, []);
-
-function persistMeasurements(next) {
-    setMeasurements(next);
-    try {
-      localStorage.setItem('paizinho-modal-measurements', JSON.stringify(next));
-    } catch (e) {
-      console.error('Falha ao salvar histórico', e);
-    }
-  }
-
-  // ---- Ativar microfone ----
-
-  // ── Ativar mic ────────────────────────────────────────────────────────────
-  async function enableMic() {
-    setMicState('requesting');
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-      });
-      const ctx    = new (window.AudioContext || window.webkitAudioContext)();
-      const source = ctx.createMediaStreamSource(stream);
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 8192;
-      analyser.smoothingTimeConstant = 0.15;
-      analyser.minDecibels = -100;
-      analyser.maxDecibels  = -20;
-      source.connect(analyser);
-      audioCtxRef.current       = ctx;
-      streamRef.current         = stream;
-      modalAnalyserRef.current  = analyser;
-      modalTimeBufRef.current   = new Float32Array(analyser.fftSize);
-      freqBufRef.current        = new Float32Array(analyser.frequencyBinCount);
-      maxHoldRef.current        = new Float32Array(analyser.frequencyBinCount).fill(-150);
-      setMicState('granted');
-    } catch (e) { setMicState('denied'); }
-  }
-
-  useEffect(() => () => {
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
-    if (audioCtxRef.current) audioCtxRef.current.close();
-  }, []);
-
-  // ── Desenho do espectro ───────────────────────────────────────────────────
-  function drawSpectrum(magDb, peakList, frozen) {
-    const canvas = spectrumCanvasRef.current;
-    if (!canvas) return;
-    const dpr  = window.devicePixelRatio || 1;
-    const cssW = canvas.clientWidth  || 320;
-    const cssH = canvas.clientHeight || 220;
-    if (canvas.width !== cssW * dpr) { canvas.width = cssW * dpr; canvas.height = cssH * dpr; }
-    const ctx = canvas.getContext('2d');
-    ctx.save(); ctx.scale(dpr, dpr); ctx.clearRect(0, 0, cssW, cssH);
-
-    const fMin = 55, fMax = 1200, dbMin = -100, dbMax = -20;
-    const sr   = audioCtxRef.current ? audioCtxRef.current.sampleRate : 48000;
-    const fftSz = modalAnalyserRef.current ? modalAnalyserRef.current.fftSize : 8192;
-    const binHz = sr / fftSz;
-    const padL = 28, padR = 8, padT = 14, padB = 22;
-    const w = cssW - padL - padR, h = cssH - padT - padB;
-    const xF = f  => padL + ((Math.log10(f) - Math.log10(fMin)) / (Math.log10(fMax) - Math.log10(fMin))) * w;
-    const yD = db => padT + (1 - (db - dbMin) / (dbMax - dbMin)) * h;
-
-    // dB axis
-    ctx.fillStyle = dark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.35)';
-    ctx.font = '8px monospace';
-    [-80, -60, -40].forEach(db => {
-      const y = yD(db);
-      ctx.strokeStyle = dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.07)';
-      ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + w, y); ctx.stroke();
-      ctx.fillText(`${db}`, 0, y + 3);
-    });
-
-    // freq grid
-    [100, 200, 400, 800].forEach(f => {
-      const x = xF(f);
-      ctx.strokeStyle = dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.07)';
-      ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + h); ctx.stroke();
-      ctx.fillStyle = dark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.35)';
-      ctx.fillText(`${f}`, x - 8, cssH - 5);
-    });
-
-    if (frozen) {
-      ctx.fillStyle = '#34d399';
-      ctx.font = 'bold 9px monospace';
-      ctx.fillText('\u25cf CAPTURADO', padL, padT - 3);
-    }
-
-    // spectrum line
-    ctx.beginPath();
-    ctx.strokeStyle = frozen ? '#67e8f9' : (dark ? 'rgba(245,158,11,0.6)' : 'rgba(180,110,0,0.7)');
-    ctx.lineWidth = frozen ? 1.8 : 1.3;
-    ctx.shadowColor = frozen ? '#67e8f9' : 'transparent';
-    ctx.shadowBlur  = frozen ? 5 : 0;
-    let first = true;
-    for (let x = 0; x <= w; x++) {
-      const f   = Math.pow(10, Math.log10(fMin) + (x / w) * (Math.log10(fMax) - Math.log10(fMin)));
-      const bin = Math.round(f / binHz);
-      const db  = magDb[bin] !== undefined ? Math.max(dbMin, magDb[bin]) : dbMin;
-      const y   = yD(db);
-      if (first) { ctx.moveTo(padL + x, y); first = false; } else { ctx.lineTo(padL + x, y); }
-    }
-    ctx.stroke(); ctx.shadowBlur = 0;
-
-    // peaks
-    peakList.forEach(p => {
-      const x = xF(p.freq), y = yD(p.db);
-      const pc = frozen ? '#fde047' : '#34d399';
-      ctx.strokeStyle = pc; ctx.setLineDash([2, 2]);
-      ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, padT + h); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle = pc; ctx.shadowColor = pc; ctx.shadowBlur = frozen ? 5 : 0;
-      ctx.beginPath(); ctx.arc(x, y, frozen ? 3.5 : 2.5, 0, Math.PI * 2); ctx.fill();
-      ctx.shadowBlur = 0;
-    });
-    ctx.restore();
-  }
-
-  // ── Loop modal ────────────────────────────────────────────────────────────
-  const modalLoop = useCallback(ts => {
-    const analyser = modalAnalyserRef.current;
-    if (analyser) {
-      analyser.getFloatTimeDomainData(modalTimeBufRef.current);
-      let rms = 0;
-      for (let i = 0; i < modalTimeBufRef.current.length; i++) rms += modalTimeBufRef.current[i] ** 2;
-      rms = Math.sqrt(rms / modalTimeBufRef.current.length);
-      setLiveLevel(prev => prev * 0.7 + rms * 0.3);
-      analyser.getFloatFrequencyData(freqBufRef.current);
-
-      if (armedRef.current && !capturingRef.current && rms > 0.035) {
-        capturingRef.current = true; setCapturing(true);
-        captureStartRef.current = ts; maxHoldRef.current.fill(-150);
-      }
-      if (capturingRef.current) {
-        for (let i = 0; i < freqBufRef.current.length; i++) {
-          if (freqBufRef.current[i] > maxHoldRef.current[i]) maxHoldRef.current[i] = freqBufRef.current[i];
-        }
-        const elapsed = ts - captureStartRef.current;
-        setCaptureProgress(Math.min(1, elapsed / 1400));
-        if (elapsed >= 1400) {
-          capturingRef.current = false; armedRef.current = false;
-          setCapturing(false); setArmed(false);
-          const modeConf = MEASURE_MODES[modalModeRef.current] || MEASURE_MODES.montado;
-          const found    = findPeaks(maxHoldRef.current, audioCtxRef.current.sampleRate, analyser.fftSize, { maxPeaks: 7, fMin: modeConf.fMin, fMax: modeConf.fMax });
-          const labeled  = found.map((p, idx) => ({ ...p, label: modeConf.labels[idx] || `Modo ${idx + 1}`, id: uid() }));
-          setPeaks(labeled);
-          frozenSpectrumRef.current = maxHoldRef.current.slice();
-          freezeUntilRef.current    = ts + 3500;
-          drawSpectrum(maxHoldRef.current, labeled, true);
-          if (spectrumCanvasRef.current) frozenImageRef.current = spectrumCanvasRef.current.toDataURL('image/jpeg', 0.88);
-        } else { drawSpectrum(maxHoldRef.current, [], true); }
-      } else if (frozenSpectrumRef.current && ts < freezeUntilRef.current) {
-        drawSpectrum(frozenSpectrumRef.current, peaks, true);
-      } else { drawSpectrum(freqBufRef.current, peaks, false); }
-    }
-    rafRef.current = requestAnimationFrame(modalLoop);
-  }, [peaks, dark]);
-
-  useEffect(() => {
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    if (micState !== 'granted') return;
-    rafRef.current = requestAnimationFrame(modalLoop);
-    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, [micState, modalLoop]);
-
-  function startCapture() { setPeaks([]); setArmed(true); }
-  function cancelCapture() {
-    setArmed(false); setCapturing(false);
-    armedRef.current = false; capturingRef.current = false; setCaptureProgress(0);
-  }
-  function updatePeakLabel(id, label) { setPeaks(prev => prev.map(p => p.id === id ? { ...p, label } : p)); }
-
-  function getNextSerial() {
-    const k = 'paizinho-cert-serial';
-    const n = parseInt(localStorage.getItem(k) || '0', 10) + 1;
-    localStorage.setItem(k, String(n));
-    return `PAI-${String(n).padStart(5, '0')}`;
-  }
-  function saveMeasurement() {
-    if (!peaks.length) return;
-    const record = { id: uid(), serial: getNextSerial(), timestamp: new Date().toISOString(), instrument: instrument.trim() || 'Sem nome', note: noteField.trim(), a4: 440, peaks: peaks.map(p => ({ freq: p.freq, db: p.db, label: p.label })), spectrumImage: frozenImageRef.current || null };
-    persistMeasurements([record, ...measurements]);
-    setNoteField('');
-  }
-  function deleteMeasurement(id) { persistMeasurements(measurements.filter(m => m.id !== id)); }
 
 function getModeType(label) {
     const l = (label || '').toLowerCase();
@@ -339,7 +77,7 @@ function generateCertificate(m) {
       </div>`;
     }
     const dateStr = new Date(m.timestamp).toLocaleString('pt-BR');
-    const certPeaks = m.peaks.slice(0, 5);
+    const certPeaks = m.peaks.slice(0, 6);
     const peaksRows = certPeaks.map(p => {
       return `<tr><td>${p.freq.toFixed(1)} Hz</td><td>${p.db.toFixed(0)} dB</td><td>${p.label}</td></tr>`;
     }).join('');
@@ -375,10 +113,10 @@ hr{border:none;border-top:1px solid #c8b89a;margin:7px 0}
 .st-dot{position:absolute;top:-4px;width:18px;height:18px;border-radius:50%;background:#2a1f0f;border:3px solid #f5f0e8;transform:translateX(-50%);box-shadow:0 1px 4px rgba(0,0,0,0.25)}
 .st-labs{display:flex;justify-content:space-between;font-size:9px;color:#8a7060}
 .st-note{font-size:8.5px;color:#8a7060;margin-top:4px;font-style:italic}
-table{width:100%;border-collapse:collapse;margin-bottom:7px;font-size:9.5px}
+table{width:100%;border-collapse:collapse;margin-bottom:6px;font-size:9px}
 thead tr{background:#2a1f0f}
-th{color:#f5f0e8;padding:4px 7px;text-align:left;font-size:8px;letter-spacing:0.08em;text-transform:uppercase;font-weight:700}
-td{padding:3px 7px;border-bottom:1px solid #d8d0c0;color:#2a1f0f;vertical-align:middle}
+th{color:#f5f0e8;padding:3px 7px;text-align:left;font-size:8px;letter-spacing:0.08em;text-transform:uppercase;font-weight:700}
+td{padding:2px 7px;border-bottom:1px solid #d8d0c0;color:#2a1f0f;vertical-align:middle}
 tr:last-child td{border-bottom:none}
 tr:nth-child(even) td{background:rgba(0,0,0,0.025)}
 td:first-child{font-weight:700;color:#5a3010;font-family:'Lato',monospace}
@@ -390,7 +128,7 @@ td:nth-child(2){color:#8a7060;font-family:'Lato',monospace}
 .sig-line{border:none;border-top:1px solid #2a1f0f;margin-bottom:7px}
 .sig-name{font-weight:700;font-size:12px;letter-spacing:0.05em}
 .sig-role{font-size:10px;color:#8a7060}
-@media print{body{background:white!important;padding:0;min-height:0;height:auto}.cert{box-shadow:none;border-color:#6b4422}}
+@media print{body{background:white!important;padding:0;min-height:0;height:auto}.cert{box-shadow:none;border-color:#6b4422}.close-btn{display:none!important}}
 .print-btn{display:block;margin:28px auto 0;padding:14px 36px;background:#2a1f0f;color:#f5f0e8;border:none;border-radius:8px;font-family:'Lato',sans-serif;font-size:13px;font-weight:700;letter-spacing:0.1em;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,0.25);text-transform:uppercase}
 .print-btn:hover{background:#3d2e1a}
 @media print{.print-btn{display:none!important}}
@@ -422,182 +160,256 @@ td:nth-child(2){color:#8a7060;font-family:'Lato',monospace}
   <button class="print-btn" onclick="window.print()">🖨 Imprimir / Salvar PDF</button>
 </body>
 </html>`;
-    const w = window.open('', '_blank');
-    if (w) { w.document.write(html); w.document.close(); }
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    setCertUrl(url);
   }
 
-  const instrumentNames = Array.from(new Set(measurements.map(m => m.instrument))).slice(0, 12);
 
-  // ── Render ────────────────────────────────────────────────────────────────
-  const bdCard   = `1px solid ${th.border}`;
-  const tMuted   = { color: th.muted, fontSize: '11px' };
-  const tAccent  = { color: th.accent };
-
+function App() {
+  const [dark,setDark]=useState(true);
+  const [micState,setMicState]=useState('idle');
+  const [modalMode,setModalMode]=useState('montado');
+  const [certUrl,setCertUrl]=useState(null);
+  const [armed,setArmed]=useState(false);
+  const [capturing,setCapturing]=useState(false);
+  const [captureProgress,setCaptureProgress]=useState(0);
+  const [peaks,setPeaks]=useState([]);
+  const [instrument,setInstrument]=useState('');
+  const [noteField,setNoteField]=useState('');
+  const [measurements,setMeasurements]=useState([]);
+  const [storageReady,setStorageReady]=useState(false);
+  const [liveLevel,setLiveLevel]=useState(0);
+  const audioCtxRef=useRef(null);const streamRef=useRef(null);const modalAnalyserRef=useRef(null);
+  const modalTimeBufRef=useRef(null);const freqBufRef=useRef(null);const maxHoldRef=useRef(null);
+  const frozenSpectrumRef=useRef(null);const freezeUntilRef=useRef(0);const frozenImageRef=useRef(null);
+  const captureStartRef=useRef(0);const rafRef=useRef(null);
+  const armedRef=useRef(false);const capturingRef=useRef(false);const modalModeRef=useRef('montado');
+  const spectrumCanvasRef=useRef(null);
+  useEffect(()=>{armedRef.current=armed;},[armed]);
+  useEffect(()=>{capturingRef.current=capturing;},[capturing]);
+  useEffect(()=>{modalModeRef.current=modalMode;},[modalMode]);
+  useEffect(()=>{
+    try{const r=localStorage.getItem('paizinho-modal-measurements');if(r)setMeasurements(JSON.parse(r));}
+    catch(e){}finally{setStorageReady(true);}
+  },[]);
+  function persistMeasurements(next){
+    setMeasurements(next);
+    try{localStorage.setItem('paizinho-modal-measurements',JSON.stringify(next));}catch(e){}
+  }
+  async function enableMic(){
+    setMicState('requesting');
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+      const ctx=new (window.AudioContext||window.webkitAudioContext)();
+      const src=ctx.createMediaStreamSource(stream);
+      const an=ctx.createAnalyser();an.fftSize=8192;an.smoothingTimeConstant=0.15;an.minDecibels=-100;an.maxDecibels=-20;
+      src.connect(an);
+      audioCtxRef.current=ctx;streamRef.current=stream;modalAnalyserRef.current=an;
+      modalTimeBufRef.current=new Float32Array(an.fftSize);
+      freqBufRef.current=new Float32Array(an.frequencyBinCount);
+      maxHoldRef.current=new Float32Array(an.frequencyBinCount).fill(-150);
+      setMicState('granted');
+    }catch(e){setMicState('denied');}
+  }
+  useEffect(()=>()=>{
+    if(rafRef.current)cancelAnimationFrame(rafRef.current);
+    if(streamRef.current)streamRef.current.getTracks().forEach(t=>t.stop());
+    if(audioCtxRef.current)audioCtxRef.current.close();
+  },[]);
+  function drawSpectrum(magDb,peakList,frozen){
+    const canvas=spectrumCanvasRef.current;if(!canvas)return;
+    const dpr=window.devicePixelRatio||1,cssW=canvas.clientWidth||320,cssH=canvas.clientHeight||220;
+    if(canvas.width!==cssW*dpr){canvas.width=cssW*dpr;canvas.height=cssH*dpr;}
+    const ctx=canvas.getContext('2d');ctx.save();ctx.scale(dpr,dpr);ctx.clearRect(0,0,cssW,cssH);
+    const fMin=55,fMax=1200,dbMin=-100,dbMax=-20;
+    const sr=audioCtxRef.current?audioCtxRef.current.sampleRate:48000;
+    const fftSz=modalAnalyserRef.current?modalAnalyserRef.current.fftSize:8192,binHz=sr/fftSz;
+    const padL=28,padR=8,padT=14,padB=22,w=cssW-padL-padR,h=cssH-padT-padB;
+    const xF=f=>padL+((Math.log10(f)-Math.log10(fMin))/(Math.log10(fMax)-Math.log10(fMin)))*w;
+    const yD=db=>padT+(1-(db-dbMin)/(dbMax-dbMin))*h;
+    ctx.fillStyle=dark?'rgba(255,255,255,0.3)':'rgba(0,0,0,0.35)';ctx.font='8px monospace';
+    [-80,-60,-40].forEach(db=>{
+      const y=yD(db);ctx.strokeStyle=dark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.07)';
+      ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(padL+w,y);ctx.stroke();ctx.fillText(db+'',0,y+3);
+    });
+    [100,200,400,800].forEach(f=>{
+      const x=xF(f);ctx.strokeStyle=dark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.07)';
+      ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+h);ctx.stroke();
+      ctx.fillStyle=dark?'rgba(255,255,255,0.3)':'rgba(0,0,0,0.35)';ctx.fillText(f+'',x-8,cssH-5);
+    });
+    if(frozen){ctx.fillStyle='#34d399';ctx.font='bold 9px monospace';ctx.fillText('CAPTURADO',padL,padT-3);}
+    ctx.beginPath();
+    ctx.strokeStyle=frozen?'#67e8f9':(dark?'rgba(245,158,11,0.6)':'rgba(180,110,0,0.7)');
+    ctx.lineWidth=frozen?1.8:1.3;ctx.shadowColor=frozen?'#67e8f9':'transparent';ctx.shadowBlur=frozen?5:0;
+    let first=true;
+    for(let x=0;x<=w;x++){
+      const f=Math.pow(10,Math.log10(fMin)+(x/w)*(Math.log10(fMax)-Math.log10(fMin)));
+      const bin=Math.round(f/binHz),db=magDb[bin]!==undefined?Math.max(dbMin,magDb[bin]):dbMin,y=yD(db);
+      if(first){ctx.moveTo(padL+x,y);first=false;}else{ctx.lineTo(padL+x,y);}
+    }
+    ctx.stroke();ctx.shadowBlur=0;
+    peakList.forEach(p=>{
+      const x=xF(p.freq),y=yD(p.db),pc=frozen?'#fde047':'#34d399';
+      ctx.strokeStyle=pc;ctx.setLineDash([2,2]);ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x,padT+h);ctx.stroke();
+      ctx.setLineDash([]);ctx.fillStyle=pc;ctx.shadowColor=frozen?'#fde047':'transparent';ctx.shadowBlur=frozen?5:0;
+      ctx.beginPath();ctx.arc(x,y,frozen?3.5:2.5,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;
+    });
+    ctx.restore();
+  }
+  const modalLoop=useCallback(ts=>{
+    const analyser=modalAnalyserRef.current;
+    if(analyser){
+      analyser.getFloatTimeDomainData(modalTimeBufRef.current);
+      let rms=0;for(let i=0;i<modalTimeBufRef.current.length;i++)rms+=modalTimeBufRef.current[i]**2;
+      rms=Math.sqrt(rms/modalTimeBufRef.current.length);
+      setLiveLevel(prev=>prev*0.7+rms*0.3);
+      analyser.getFloatFrequencyData(freqBufRef.current);
+      if(armedRef.current&&!capturingRef.current&&rms>0.035){
+        capturingRef.current=true;setCapturing(true);captureStartRef.current=ts;maxHoldRef.current.fill(-150);
+      }
+      if(capturingRef.current){
+        for(let i=0;i<freqBufRef.current.length;i++){if(freqBufRef.current[i]>maxHoldRef.current[i])maxHoldRef.current[i]=freqBufRef.current[i];}
+        const elapsed=ts-captureStartRef.current;setCaptureProgress(Math.min(1,elapsed/1400));
+        if(elapsed>=1400){
+          capturingRef.current=false;armedRef.current=false;setCapturing(false);setArmed(false);
+          const modeConf=MEASURE_MODES[modalModeRef.current]||MEASURE_MODES.montado;
+          const found=findPeaks(maxHoldRef.current,audioCtxRef.current.sampleRate,analyser.fftSize,{maxPeaks:7,fMin:modeConf.fMin,fMax:modeConf.fMax});
+          const labeled=found.map((p,idx)=>({...p,label:modeConf.labels[idx]||('Modo '+(idx+1)),id:uid()}));
+          setPeaks(labeled);frozenSpectrumRef.current=maxHoldRef.current.slice();freezeUntilRef.current=ts+3500;
+          drawSpectrum(maxHoldRef.current,labeled,true);
+          if(spectrumCanvasRef.current){
+            const src=spectrumCanvasRef.current,maxW=520,scale=Math.min(1,maxW/src.width);
+            const tmp=document.createElement('canvas');tmp.width=src.width*scale;tmp.height=src.height*scale;
+            tmp.getContext('2d').drawImage(src,0,0,tmp.width,tmp.height);
+            frozenImageRef.current=tmp.toDataURL('image/jpeg',0.75);
+          }
+        }else{drawSpectrum(maxHoldRef.current,[],true);}
+      }else if(frozenSpectrumRef.current&&ts<freezeUntilRef.current){
+        drawSpectrum(frozenSpectrumRef.current,peaks,true);
+      }else{drawSpectrum(freqBufRef.current,peaks,false);}
+    }
+    rafRef.current=requestAnimationFrame(modalLoop);
+  },[peaks,dark]);
+  useEffect(()=>{
+    if(rafRef.current)cancelAnimationFrame(rafRef.current);
+    if(micState!=='granted')return;
+    rafRef.current=requestAnimationFrame(modalLoop);
+    return()=>{if(rafRef.current)cancelAnimationFrame(rafRef.current);};
+  },[micState,modalLoop]);
+  function startCapture(){setPeaks([]);setArmed(true);}
+  function cancelCapture(){setArmed(false);setCapturing(false);armedRef.current=false;capturingRef.current=false;setCaptureProgress(0);}
+  function updatePeakLabel(id,label){setPeaks(prev=>prev.map(p=>p.id===id?{...p,label}:p));}
+  function getNextSerial(){const k='paizinho-cert-serial';const n=parseInt(localStorage.getItem(k)||'0',10)+1;localStorage.setItem(k,String(n));return 'PAI-'+String(n).padStart(5,'0');}
+  function saveMeasurement(){
+    if(!peaks.length)return;
+    const rec={id:uid(),serial:getNextSerial(),timestamp:new Date().toISOString(),instrument:instrument.trim()||'Sem nome',note:noteField.trim(),a4:440,peaks:peaks.map(p=>({freq:p.freq,db:p.db,label:p.label})),spectrumImage:frozenImageRef.current||null};
+    persistMeasurements([rec,...measurements]);setNoteField('');
+  }
+  function deleteMeasurement(id){persistMeasurements(measurements.filter(m=>m.id!==id));}
+  const th={bg:dark?'#09090b':'#faf8f5',card:dark?'#18181b':'#ffffff',border:dark?'#27272a':'#e2ddd8',text:dark?'#f4f4f5':'#1c1917',muted:dark?'#71717a':'#78716c',accent:'#f59e0b',accentT:dark?'rgba(245,158,11,0.15)':'rgba(245,158,11,0.12)',scan:dark?'repeating-linear-gradient(0deg,rgba(255,255,255,0.015) 0,rgba(255,255,255,0.015) 1px,transparent 1px,transparent 3px)':'none'};
+  const bdCard='1px solid '+th.border,tMuted={color:th.muted,fontSize:'11px'},tAccent={color:th.accent};
+  const instrumentNames=Array.from(new Set(measurements.map(m=>m.instrument))).slice(0,12);
   return (
-    <div style={{ minHeight: '100vh', background: th.bg, color: th.text, fontFamily: "'JetBrains Mono',monospace", padding: '12px 14px 32px' }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
-        .font-arch { font-family:'Archivo',sans-serif; }
-        @keyframes pulseSlow { 0%,100%{opacity:.4} 50%{opacity:1} }
-        .pulse { animation: pulseSlow 1.3s ease-in-out infinite; }
-        input[type=range] { accent-color: #f59e0b; }
-        select,input[type=text] { color-scheme: ${dark ? 'dark' : 'light'}; }
-        ::-webkit-scrollbar { width:4px } ::-webkit-scrollbar-thumb { background:${th.border}; border-radius:2px }
-      `}</style>
-
-      {/* ── Header ── */}
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'16px' }}>
+    <div style={{minHeight:'100vh',background:th.bg,color:th.text,fontFamily:"'JetBrains Mono',monospace",padding:'12px 14px 32px'}}>
+      <style>{"@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');.font-arch{font-family:'Archivo',sans-serif;}@keyframes pulseSlow{0%,100%{opacity:.4}50%{opacity:1}}.pulse{animation:pulseSlow 1.3s ease-in-out infinite;}"}</style>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'16px'}}>
         <div>
-          <div className="font-arch" style={{ fontSize:'17px', fontWeight:700, letterSpacing:'-0.01em' }}>
-            PAIZINHO <span style={tMuted}>// ANÁLISE MODAL</span>
-          </div>
-          <div style={{ ...tMuted, fontSize:'10px', letterSpacing:'0.12em', textTransform:'uppercase' }}>
-            acústica de tampo · caixa · fundo
-          </div>
+          <div className="font-arch" style={{fontSize:'17px',fontWeight:700}}>PAIZINHO <span style={tMuted}>// ANALISE MODAL</span></div>
+          <div style={{...tMuted,fontSize:'10px',letterSpacing:'0.12em',textTransform:'uppercase'}}>acustica de tampo - caixa - fundo</div>
         </div>
-        <button onClick={() => setDark(!dark)}
-          style={{ background: th.accentT, border:`1px solid ${th.border}`, borderRadius:'8px', padding:'7px 12px', cursor:'pointer', fontSize:'16px', color: th.text }}>
-          {dark ? '☀️' : '🌙'}
-        </button>
+        <button onClick={()=>setDark(!dark)} style={{background:th.accentT,border:'1px solid '+th.border,borderRadius:'8px',padding:'7px 12px',cursor:'pointer',fontSize:'16px',color:th.text}}>{dark?'☀️':'??'}</button>
       </div>
-
-      {/* ── Mic gate ── */}
-      {micState !== 'granted' && (
-        <div style={{ background: th.card, border: bdCard, borderRadius:'12px', padding:'32px 20px', textAlign:'center', marginBottom:'14px' }}>
-          <div style={{ fontSize:'32px', marginBottom:'12px' }}>🎙</div>
-          <p style={{ ...tMuted, marginBottom:'16px', lineHeight:'1.6' }}>
-            {micState === 'denied'
-              ? 'Permissão de microfone negada. Libere nas configurações do navegador.'
-              : 'Ative o microfone para iniciar a análise.'}
-          </p>
-          <button onClick={enableMic} disabled={micState === 'requesting'}
-            style={{ background:'#f59e0b', color:'#1c1917', fontFamily:"'Archivo',sans-serif", fontWeight:700, fontSize:'13px', padding:'12px 28px', borderRadius:'8px', border:'none', cursor:'pointer', opacity: micState === 'requesting' ? 0.6 : 1 }}>
-            {micState === 'requesting' ? 'Solicitando...' : 'Ativar Microfone'}
-          </button>
+      {micState!=='granted'&&(
+        <div style={{background:th.card,border:bdCard,borderRadius:'12px',padding:'32px 20px',textAlign:'center',marginBottom:'14px'}}>
+          <div style={{fontSize:'32px',marginBottom:'12px'}}>{'??'}</div>
+          <p style={{...tMuted,marginBottom:'16px',lineHeight:'1.6'}}>{micState==='denied'?'Permissao de microfone negada.':'Ative o microfone para iniciar a analise.'}</p>
+          <button onClick={enableMic} disabled={micState==='requesting'} style={{background:'#f59e0b',color:'#1c1917',fontFamily:"'Archivo',sans-serif",fontWeight:700,fontSize:'13px',padding:'12px 28px',borderRadius:'8px',border:'none',cursor:'pointer',opacity:micState==='requesting'?0.6:1}}>{micState==='requesting'?'Solicitando...':'Ativar Microfone'}</button>
         </div>
       )}
-
-      {micState === 'granted' && (
-        <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
-
-          {/* ── Seletor de modo ── */}
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'6px' }}>
-            {Object.entries(MEASURE_MODES).map(([key, m]) => (
-              <button key={key} onClick={() => { setModalMode(key); setPeaks([]); }}
-                style={{
-                  padding:'9px 4px', borderRadius:'8px', border: modalMode === key ? `1.5px solid ${th.accent}` : bdCard,
-                  background: modalMode === key ? th.accentT : th.card,
-                  color: modalMode === key ? th.accent : th.muted,
-                  fontFamily:"'Archivo',sans-serif", fontWeight:600, fontSize:'11px', cursor:'pointer',
-                  letterSpacing:'0.02em', transition:'all 0.15s'
-                }}>
-                <div style={{ fontSize:'18px', marginBottom:'2px' }}>{m.btn}</div>
-                {m.label}
+      {micState==='granted'&&(
+        <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'6px'}}>
+            {Object.entries(MEASURE_MODES).map(([key,m])=>(
+              <button key={key} onClick={()=>{setModalMode(key);setPeaks([]);}}
+                style={{padding:'9px 4px',borderRadius:'8px',border:modalMode===key?'1.5px solid #f59e0b':bdCard,background:modalMode===key?th.accentT:th.card,color:modalMode===key?th.accent:th.muted,fontFamily:"'Archivo',sans-serif",fontWeight:600,fontSize:'11px',cursor:'pointer'}}>
+                <div style={{fontSize:'18px',marginBottom:'2px'}}>{m.btn}</div>{m.label}
               </button>
             ))}
           </div>
-
-          {/* ── Espectro ── */}
-          <div style={{ background: th.card, border: bdCard, borderRadius:'12px', padding:'14px', backgroundImage: th.scan }}>
-            <canvas ref={spectrumCanvasRef} style={{ width:'100%', height:'220px', display:'block' }} />
-            <div style={{ display:'flex', alignItems:'center', gap:'8px', marginTop:'8px', marginBottom:'10px' }}>
-              <span style={{ ...tMuted, fontSize:'10px', whiteSpace:'nowrap' }}>nível mic</span>
-              <div style={{ flex:1, height:'4px', background: th.border, borderRadius:'2px', overflow:'hidden' }}>
-                <div style={{ height:'100%', background:'#f59e0b', width:`${Math.min(100, liveLevel * 600)}%`, borderRadius:'2px', transition:'width 0.05s' }} />
+          <div style={{background:th.card,border:bdCard,borderRadius:'12px',padding:'14px',backgroundImage:th.scan}}>
+            <canvas ref={spectrumCanvasRef} style={{width:'100%',height:'220px',display:'block'}} />
+            <div style={{display:'flex',alignItems:'center',gap:'8px',marginTop:'8px',marginBottom:'10px'}}>
+              <span style={{...tMuted,fontSize:'10px',whiteSpace:'nowrap'}}>nivel mic</span>
+              <div style={{flex:1,height:'4px',background:th.border,borderRadius:'2px',overflow:'hidden'}}>
+                <div style={{height:'100%',background:'#f59e0b',width:Math.min(100,liveLevel*600)+'%'}} />
               </div>
             </div>
-
-            {!armed && !capturing && (
-              <button onClick={startCapture}
-                style={{ width:'100%', padding:'13px', background:'#f59e0b', color:'#1c1917', fontFamily:"'Archivo',sans-serif", fontWeight:700, fontSize:'14px', borderRadius:'8px', border:'none', cursor:'pointer', letterSpacing:'0.04em' }}>
-                {MEASURE_MODES[modalMode]?.btn} Escutar — {MEASURE_MODES[modalMode]?.label}
+            {!armed&&!capturing&&(
+              <button onClick={startCapture} style={{width:'100%',padding:'13px',background:'#f59e0b',color:'#1c1917',fontFamily:"'Archivo',sans-serif",fontWeight:700,fontSize:'14px',borderRadius:'8px',border:'none',cursor:'pointer'}}>
+                {MEASURE_MODES[modalMode]&&MEASURE_MODES[modalMode].btn} Escutar - {MEASURE_MODES[modalMode]&&MEASURE_MODES[modalMode].label}
               </button>
             )}
-            {armed && !capturing && (
-              <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-                <button onClick={cancelCapture}
-                  style={{ padding:'11px 14px', background: th.card, border: bdCard, borderRadius:'8px', color: th.muted, cursor:'pointer', fontSize:'12px' }}>
-                  ✕ cancelar
-                </button>
-                <div className="pulse" style={{ flex:1, textAlign:'center', color:'#f59e0b', fontSize:'12px', fontWeight:600, letterSpacing:'0.08em' }}>
-                  ● AGUARDANDO IMPACTO...
-                </div>
+            {armed&&!capturing&&(
+              <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
+                <button onClick={cancelCapture} style={{padding:'11px 14px',background:th.card,border:bdCard,borderRadius:'8px',color:th.muted,cursor:'pointer',fontSize:'12px'}}>cancelar</button>
+                <div className="pulse" style={{flex:1,textAlign:'center',color:'#f59e0b',fontSize:'12px',fontWeight:600}}>AGUARDANDO IMPACTO...</div>
               </div>
             )}
-            {capturing && (
+            {capturing&&(
               <div>
-                <div style={{ textAlign:'center', color:'#34d399', fontSize:'12px', fontWeight:600, marginBottom:'6px', letterSpacing:'0.06em' }}>
-                  capturando decaimento...
-                </div>
-                <div style={{ height:'4px', background: th.border, borderRadius:'2px', overflow:'hidden' }}>
-                  <div style={{ height:'100%', background:'#34d399', width:`${captureProgress * 100}%`, borderRadius:'2px', transition:'width 0.1s' }} />
+                <div style={{textAlign:'center',color:'#34d399',fontSize:'12px',fontWeight:600,marginBottom:'6px'}}>capturando...</div>
+                <div style={{height:'4px',background:th.border,borderRadius:'2px',overflow:'hidden'}}>
+                  <div style={{height:'100%',background:'#34d399',width:(captureProgress*100)+'%'}} />
                 </div>
               </div>
             )}
           </div>
-
-          {/* ── Picos detectados ── */}
-          {peaks.length > 0 && (
-            <div style={{ background: th.card, border: bdCard, borderRadius:'12px', padding:'14px' }}>
-              <div className="font-arch" style={{ fontWeight:600, fontSize:'13px', marginBottom:'4px' }}>Picos detectados</div>
-              <div style={{ ...tMuted, fontSize:'10px', marginBottom:'12px', lineHeight:'1.5' }}>
-                Confirme e renomeie conforme sua identificação acústica.
-              </div>
-              <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
-                {peaks.map(p => (
-                  <div key={p.id} style={{ display:'flex', alignItems:'center', gap:'8px', background: th.bg, borderRadius:'6px', padding:'8px 10px' }}>
-                    <span style={{ ...tAccent, fontWeight:700, fontSize:'13px', width:'90px', flexShrink:0 }}>{formatHz(p.freq)}</span>
-                    <span style={{ ...tMuted, fontSize:'10px', width:'48px', flexShrink:0 }}>{p.db.toFixed(0)} dB</span>
-                    <input value={p.label} onChange={e => updatePeakLabel(p.id, e.target.value)}
-                      style={{ flex:1, background: th.card, border: bdCard, borderRadius:'5px', padding:'5px 8px', fontSize:'11px', color: th.text }} />
+          {peaks.length>0&&(
+            <div style={{background:th.card,border:bdCard,borderRadius:'12px',padding:'14px'}}>
+              <div className="font-arch" style={{fontWeight:600,fontSize:'13px',marginBottom:'4px'}}>Picos detectados</div>
+              <div style={{...tMuted,fontSize:'10px',marginBottom:'12px'}}>Confirme e renomeie conforme sua identificacao acustica.</div>
+              <div style={{display:'flex',flexDirection:'column',gap:'6px'}}>
+                {peaks.map(p=>(
+                  <div key={p.id} style={{display:'flex',alignItems:'center',gap:'8px',background:th.bg,borderRadius:'6px',padding:'8px 10px'}}>
+                    <span style={{...tAccent,fontWeight:700,fontSize:'13px',width:'90px',flexShrink:0}}>{formatHz(p.freq)}</span>
+                    <span style={{...tMuted,fontSize:'10px',width:'48px',flexShrink:0}}>{p.db.toFixed(0)} dB</span>
+                    <input value={p.label} onChange={e=>updatePeakLabel(p.id,e.target.value)} style={{flex:1,background:th.card,border:bdCard,borderRadius:'5px',padding:'5px 8px',fontSize:'11px',color:th.text}} />
                   </div>
                 ))}
               </div>
-              <div style={{ display:'flex', flexWrap:'wrap', gap:'8px', marginTop:'12px', paddingTop:'10px', borderTop: bdCard }}>
-                <input list="inst-list" value={instrument} onChange={e => setInstrument(e.target.value)}
-                  placeholder="instrumento (ex: Violão 5)" style={{ flex:'1 1 140px', background: th.card, border: bdCard, borderRadius:'6px', padding:'8px 10px', fontSize:'11px', color: th.text }} />
-                <datalist id="inst-list">{instrumentNames.map(n => <option key={n} value={n}/>)}</datalist>
-                <input value={noteField} onChange={e => setNoteField(e.target.value)}
-                  placeholder="observação" style={{ flex:'2 1 180px', background: th.card, border: bdCard, borderRadius:'6px', padding:'8px 10px', fontSize:'11px', color: th.text }} />
-                <button onClick={saveMeasurement}
-                  style={{ padding:'8px 16px', background:'#34d399', color:'#0f172a', fontFamily:"'Archivo',sans-serif", fontWeight:700, fontSize:'12px', borderRadius:'6px', border:'none', cursor:'pointer' }}>
-                  💾 Salvar
-                </button>
+              <div style={{display:'flex',flexWrap:'wrap',gap:'8px',marginTop:'12px',paddingTop:'10px',borderTop:bdCard}}>
+                <input list="inst-list" value={instrument} onChange={e=>setInstrument(e.target.value)} placeholder="instrumento" style={{flex:'1 1 140px',background:th.card,border:bdCard,borderRadius:'6px',padding:'8px 10px',fontSize:'11px',color:th.text}} />
+                <datalist id="inst-list">{instrumentNames.map(n=><option key={n} value={n}/>)}</datalist>
+                <input value={noteField} onChange={e=>setNoteField(e.target.value)} placeholder="observacao" style={{flex:'2 1 180px',background:th.card,border:bdCard,borderRadius:'6px',padding:'8px 10px',fontSize:'11px',color:th.text}} />
+                <button onClick={saveMeasurement} style={{padding:'8px 16px',background:'#34d399',color:'#0f172a',fontFamily:"'Archivo',sans-serif",fontWeight:700,fontSize:'12px',borderRadius:'6px',border:'none',cursor:'pointer'}}>Salvar</button>
               </div>
             </div>
           )}
-
-          {/* ── Histórico ── */}
-          {storageReady && measurements.length > 0 && (
-            <div style={{ background: th.card, border: bdCard, borderRadius:'12px', padding:'14px' }}>
-              <div className="font-arch" style={{ fontWeight:600, fontSize:'13px', marginBottom:'10px' }}>Histórico</div>
-              <div style={{ display:'flex', flexDirection:'column', gap:'6px', maxHeight:'320px', overflowY:'auto' }}>
-                {measurements.map(m => (
-                  <details key={m.id} style={{ background: th.bg, borderRadius:'8px' }}>
-                    <summary style={{ padding:'9px 12px', cursor:'pointer', display:'flex', justifyContent:'space-between', alignItems:'center', listStyle:'none' }}>
+          {storageReady&&measurements.length>0&&(
+            <div style={{background:th.card,border:bdCard,borderRadius:'12px',padding:'14px'}}>
+              <div className="font-arch" style={{fontWeight:600,fontSize:'13px',marginBottom:'10px'}}>Historico</div>
+              <div style={{display:'flex',flexDirection:'column',gap:'6px',maxHeight:'320px',overflowY:'auto'}}>
+                {measurements.map(m=>(
+                  <details key={m.id} style={{background:th.bg,borderRadius:'8px'}}>
+                    <summary style={{padding:'9px 12px',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',listStyle:'none'}}>
                       <div>
-                        <div className="font-arch" style={{ fontWeight:600, fontSize:'12px' }}>{m.instrument}</div>
-                        {m.serial && <div style={{ ...tMuted, fontSize:'9px', letterSpacing:'0.12em' }}>{m.serial}</div>}
+                        <div className="font-arch" style={{fontWeight:600,fontSize:'12px'}}>{m.instrument}</div>
+                        {m.serial&&<div style={{...tMuted,fontSize:'9px',letterSpacing:'0.12em'}}>{m.serial}</div>}
                       </div>
-                      <span style={{ ...tMuted, fontSize:'10px' }}>{new Date(m.timestamp).toLocaleDateString('pt-BR')}</span>
+                      <span style={{...tMuted,fontSize:'10px'}}>{new Date(m.timestamp).toLocaleDateString('pt-BR')}</span>
                     </summary>
-                    <div style={{ padding:'4px 12px 10px' }}>
-                      {m.note && <div style={{ ...tMuted, fontSize:'10px', fontStyle:'italic', marginBottom:'6px' }}>{m.note}</div>}
-                      {m.peaks.map((p, i) => (
-                        <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:'11px', padding:'2px 0', borderBottom:`1px solid ${th.border}` }}>
-                          <span style={{ color: th.muted }}>{p.label}</span>
+                    <div style={{padding:'4px 12px 10px'}}>
+                      {m.note&&<div style={{...tMuted,fontSize:'10px',fontStyle:'italic',marginBottom:'6px'}}>{m.note}</div>}
+                      {m.peaks.map((p,i)=>(
+                        <div key={i} style={{display:'flex',justifyContent:'space-between',fontSize:'11px',padding:'2px 0',borderBottom:'1px solid '+th.border}}>
+                          <span style={{color:th.muted}}>{p.label}</span>
                           <span style={tAccent}>{formatHz(p.freq)}</span>
                         </div>
                       ))}
-                      <div style={{ display:'flex', gap:'10px', marginTop:'10px' }}>
-                        <button onClick={() => generateCertificate(m)}
-                          style={{ padding:'6px 14px', background: th.accentT, border:`1px solid ${th.accent}`, borderRadius:'6px', color: th.accent, fontFamily:"'Archivo',sans-serif", fontWeight:600, fontSize:'11px', cursor:'pointer' }}>
-                          ⬡ Gerar Certificado
-                        </button>
-                        <button onClick={() => deleteMeasurement(m.id)}
-                          style={{ background:'none', border:'none', color:'#f87171', fontSize:'11px', cursor:'pointer' }}>
-                          excluir
-                        </button>
+                      <div style={{display:'flex',gap:'10px',marginTop:'10px'}}>
+                        <button onClick={()=>generateCertificate(m)} style={{padding:'6px 14px',background:th.accentT,border:'1px solid '+th.accent,borderRadius:'6px',color:th.accent,fontFamily:"'Archivo',sans-serif",fontWeight:600,fontSize:'11px',cursor:'pointer'}}>Gerar Certificado</button>
+                        <button onClick={()=>deleteMeasurement(m.id)} style={{background:'none',border:'none',color:'#f87171',fontSize:'11px',cursor:'pointer'}}>excluir</button>
                       </div>
                     </div>
                   </details>
@@ -605,15 +417,22 @@ td:nth-child(2){color:#8a7060;font-family:'Lato',monospace}
               </div>
             </div>
           )}
-
+        </div>
+      )}
+      {certUrl&&(
+        <div style={{position:'fixed',inset:0,zIndex:1000,background:'#f5f0e8',display:'flex',flexDirection:'column'}}>
+          <div style={{display:'flex',alignItems:'center',gap:'10px',padding:'10px 16px',background:'#2a1f0f',flexShrink:0}}>
+            <button onClick={()=>{URL.revokeObjectURL(certUrl);setCertUrl(null);}} style={{background:'rgba(255,255,255,0.15)',border:'none',borderRadius:'6px',color:'#f5f0e8',padding:'8px 14px',fontFamily:"'Lato',sans-serif",fontWeight:700,fontSize:'13px',cursor:'pointer'}}>Voltar</button>
+            <span style={{flex:1,color:'#c8b89a',fontSize:'11px',textAlign:'center',textTransform:'uppercase'}}>Certificado</span>
+            <button onClick={()=>{const f=document.getElementById('certFrame');if(f)f.contentWindow.print();}} style={{background:'#f59e0b',border:'none',borderRadius:'6px',color:'#1c1917',padding:'8px 14px',fontFamily:"'Lato',sans-serif",fontWeight:700,fontSize:'13px',cursor:'pointer'}}>Imprimir</button>
+          </div>
+          <iframe id="certFrame" src={certUrl} style={{flex:1,border:'none',width:'100%'}} />
         </div>
       )}
     </div>
   );
 }
-
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-
 </script>
 <script>
 (function(){
